@@ -11,13 +11,15 @@ typedef struct {
 	u32 extA, extB;
 } u256_gcd;
 
-static u32 u32_adc(u32 x, u32 y, u32 cf, u32 *cf1) {
+inline static
+u32 u32_adc(u32 x, u32 y, u32 cf, u32 *cf1) {
 	u32 z = x + y + cf;
 	*cf1 = (z < x) || (cf && (z == x));
 	return z;
 }
 
-static u32 u32_sbb(u32 x, u32 y, u32 bf, u32 *bf1) {
+inline static
+u32 u32_sbb(u32 x, u32 y, u32 bf, u32 *bf1) {
 	u32 z = x - y - bf;
 	*bf1 = (z > x) || (bf && (z == x));
 	return z;
@@ -34,7 +36,8 @@ void u256_copy(u32 R[8], const u32 X[8]) {
 }
 
 // `(retval ...R) = -(extX ...X)`
-static u32 u256_neg(u32 R[8], const u32 X[8], u32 extX) {
+inline static
+u32 u256_neg(u32 R[8], const u32 X[8], u32 extX) {
 	u32 cf = 1;
 	for (u32 i = 0; i < 8; i++)
 		R[i] = u32_adc(~X[i], 0, cf, &cf);
@@ -42,13 +45,15 @@ static u32 u256_neg(u32 R[8], const u32 X[8], u32 extX) {
 	return u32_adc(~extX, 0, cf, &cf);
 }
 
-static u32 u256_width(const u32 X[8]) {
+inline static
+u32 u256_width(const u32 X[8]) {
 	u32 n = 7;
 	while (X[n] == 0) n--;
 	return n;
 }
 
-static u64 u256_get64(const u32 X[8], u32 i) {
+inline static
+u64 u256_get64(const u32 X[8], u32 i) {
 	u64 x = X[i];
 	if (i < 7) x |= (u64)X[i+1] << 32;
 	return x;
@@ -74,14 +79,16 @@ ord u256_cmp(const u32 X[8], const u32 Y[8]) {
 	else return EQ;
 }
 
-static void u256_shr1(u32 R[8], const u32 X[8], u32 ext) {
+inline static
+void u256_shr1(u32 R[8], const u32 X[8], u32 ext) {
 	for (u32 i = 0; i < 7; i++)
 		R[i] = (X[i] >> 1) | (X[i+1] << 31);
 
 	R[7] = (X[7] >> 1) | (ext << 31);
 }
 
-static void u256_shr32(u32 R[8], const u32 X[8], u32 ext) {
+inline static
+void u256_shr32(u32 R[8], const u32 X[8], u32 ext) {
 	for (u32 i = 0; i < 7; i++)
 		R[i] = X[i + 1];
 
@@ -89,7 +96,8 @@ static void u256_shr32(u32 R[8], const u32 X[8], u32 ext) {
 }
 
 // `R = X >> (32*n)`
-static void u256_shl32n(u32 R[8], const u32 X[8], u32 n) {
+inline static
+void u256_shl32n(u32 R[8], const u32 X[8], u32 n) {
 	for (u32 i = 7; i+1 > n; i--)
 		R[i] = X[i-n];
 
@@ -116,7 +124,8 @@ u32 u256_sub(u32 R[8], const u32 X[8], const u32 Y[8]) {
 }
 
 // `(retval ...R) = (extX ...X) - (extY ...Y)`
-static u32 u256_sub_ext(
+inline static
+u32 u256_sub_ext(
 	u32 R[8],
 	const u32 X[8], u32 extX,
 	const u32 Y[8], u32 extY
@@ -147,7 +156,8 @@ void u256_modsub(
 }
 
 // `R += k*X`
-static u32 u256_muladd(u32 R[8], u32 k, const u32 X[8]) {
+inline static
+u32 u256_muladd(u32 R[8], u32 k, const u32 X[8]) {
 	u32 ext = 0, cf1 = 0, cf2 = 0;
 	for (u32 i = 0; i < 8; i++) {
 		u32 x = u32_adc(k * X[i], ext, 0, &cf1);
@@ -159,7 +169,8 @@ static u32 u256_muladd(u32 R[8], u32 k, const u32 X[8]) {
 }
 
 // `R -= k*X`
-static u32 u256_mulsub(u32 R[8], u32 k, const u32 X[8]) {
+inline static
+u32 u256_mulsub(u32 R[8], u32 k, const u32 X[8]) {
 	u32 ext = 0, cf = 0, bf = 0;
 	for (u32 i = 0; i < 8; i++) {
 		u32 x = u32_adc(k * X[i], ext, 0, &cf);
@@ -172,11 +183,11 @@ static u32 u256_mulsub(u32 R[8], u32 k, const u32 X[8]) {
 
 /////////////////////////////////////////////////
 
-static void u256_gcd_step(
+inline static
+void u256_gcd_step(
 	u256_gcd *gcd,
 	const u32 X[8], const u32 Y[8]
 ) {
-	// see Handbook of Applied Cryptography, 14.61
 	while (!(gcd->X[0] & 1)) {
 		u256_shr1(gcd->X, gcd->X, 0);
 
@@ -193,10 +204,8 @@ static void u256_gcd_step(
 	}
 }
 
-static void u256_gcd_swap(
-	u256_gcd *gcd1, u256_gcd *gcd2
-) {
-	// see Handbook of Applied Cryptography, 14.61
+inline static
+void u256_gcd_swap(u256_gcd *gcd1, u256_gcd *gcd2) {
 	if (u256_cmp(gcd1->X, gcd2->X) == LT) {
 		u256_gcd *tmp = gcd1;
 		gcd1 = gcd2; gcd2 = tmp;
@@ -367,10 +376,25 @@ void monty_mul(
 	u256_copy(R, T);
 }
 
-void monty_inv(
-	u32 R[8], const u32 X[8],
-	const monty* Mo
+void monty_invN(
+	u32 Rs[][8], const u32 Xs[][8],
+	u32 n, u32 st, const monty* Mo
 ) {
-	u256_modinv(R, X, Mo->M);
-	monty_mul(R, R, Mo->R3, Mo);
+	u32 Ts[n][8], I[8];
+
+	u256_copy(Ts[0], Xs[0]);
+	for (u32 i = 1; i < n; i++)
+		// `T[i] ~= X[0] * X[1] * ... * X[i]` (mod M)
+		monty_mul(Ts[i], Ts[i-1], Xs[st*i], Mo);
+
+	u256_modinv(I, Ts[n-1], Mo->M);
+	monty_mul(I, I, Mo->R3, Mo);
+
+	for (u32 i = n-1; i+1 > 1; i--) {
+		// `I * T[i-1] * X[st-i] ~= 1` (mod M)
+		monty_mul(Rs[i], I, Ts[i-1], Mo);
+		monty_mul(I, I, Xs[st*i], Mo);
+	}
+
+	u256_copy(Rs[0], I);
 }
