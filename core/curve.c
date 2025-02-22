@@ -40,26 +40,26 @@ void ed_init25519(ed_ctx* Ed) {
 	monty_ctx* Mo = &Ed->Mo;
 	monty_init(Mo, ED25519_M);
 
-	monty_inj(Ed->G.X, ED25519_GX, Mo);
-	monty_inj(Ed->G.Y, ED25519_GY, Mo);
+	monty_mul(Ed->G.X, ED25519_GX, Mo->R2, Mo);
+	monty_mul(Ed->G.Y, ED25519_GY, Mo->R2, Mo);
 	monty_mul(Ed->G.T, Ed->G.X, Ed->G.Y, Mo);
 	u256_copy(Ed->G.Z, Mo->_1);
 
-	monty_inj(Ed->_2D, ED25519_D, Mo);
+	monty_mul(Ed->_2D, ED25519_D, Mo->R2, Mo);
 	u256_modadd(Ed->_2D, Ed->_2D, Ed->_2D, Mo->M);
 }
 
-void ed_normN(
-	ed_xyzt R[], const ed_xyzt P[],
-	u32 n, const ed_ctx* Ed
+void ed_norm256(
+	ed_xyzt R[256], const ed_xyzt P[256],
+	const ed_ctx* Ed
 ) {
 	const monty_ctx* Mo = &Ed->Mo;
 	const u32 (*Zs)[8] = (void*)P[0].Z;
 
-	u32 Z_inv[n][8];
-	monty_invN(Z_inv, Zs, n, 4, Mo);
+	u32 Z_inv[256][8];
+	monty_inv256(Z_inv, Zs, 4, Mo);
 
-	for (u32 i = 0; i < n; i++) {
+	for (u32 i = 0; i < 256; i++) {
 		monty_mul(R[i].X, P[i].X, Z_inv[i], Mo);
 		monty_mul(R[i].Y, P[i].Y, Z_inv[i], Mo);
 		monty_mul(R[i].T, R[i].X, R[i].Y, Mo);
@@ -71,31 +71,25 @@ void ed_normN(
 
 static void ed_add(
 	ed_xyzt* R,
-	u32 A[8], u32 B[8],
-	u32 C[8], u32 D[8],
+	const u32 A[8], const u32 B[8],
+	const u32 C[8], const u32 D[8],
 	const ed_ctx* Ed
 ) {
 	const monty_ctx* Mo = &Ed->Mo;
 
-	u32 T1[8], T2[8];
-	u32 *E = A, *F = B, *G = C, *H = D;
-
-	// `G = D+C`, `H = B+A`
-	u256_modadd(T1, D, C, Mo->M);
-	u256_modadd(T2, B, A, Mo->M);
+	u32 E[8], F[8], G[8], H[8];
 
 	// `E = B-A`, `F = D-C`
+	// `G = D+C`, `H = B+A`
 	u256_modsub(E, B, A, Mo->M);
 	u256_modsub(F, D, C, Mo->M);
-
-	u256_copy(G, T1);
-	u256_copy(H, T2);
+	u256_modadd(G, D, C, Mo->M);
+	u256_modadd(H, B, A, Mo->M);
 
 	// `R->X = E*F`, `R->Y = G*H`
+	// `R->T = E*H`, `R->Z = F*G`
 	monty_mul(R->X, E, F, Mo);
 	monty_mul(R->Y, G, H, Mo);
-
-	// `R->T = E*H`, `R->Z = F*G`
 	monty_mul(R->T, E, H, Mo);
 	monty_mul(R->Z, F, G, Mo);
 }
@@ -174,22 +168,22 @@ static void ed_cummul(
 }
 
 void ed_precomp16(
-	ed_xy2d Rs[16][1<<16], const ed_ctx* Ed
+	ed_xy2d Rs[16][65536], const ed_ctx* Ed
 ) {
-	ed_xyzt P, G, T[64];
+	ed_xyzt P, G, T[256];
 	ed_xyzt_copy(&G, &Ed->G);
 
 	for (u32 i = 0; i < 16; i++) {
 		ed_xyzt_id(&P, Ed);
 
-		for (u32 j = 0; j < (1<<16); j += 64) {
-			ed_cummul(T, &P, &G, 64, Ed);
+		for (u32 j = 0; j < 65536; j += 256) {
+			ed_cummul(T, &P, &G, 256, Ed);
 
-			// `P = P + 64 * G`
-			ed_add_xyzt(&P, &T[63], &G, Ed);
-			ed_normN(T, T, 64, Ed);
+			// `P = P + 256 * G`
+			ed_add_xyzt(&P, &T[255], &G, Ed);
+			ed_norm256(T, T, Ed);
 
-			for (u32 k = 0; k < 64; k++)
+			for (u32 k = 0; k < 256; k++)
 				ed_xy2d_init(&Rs[i][j+k], &T[k], Ed);
 		}
 
@@ -201,7 +195,7 @@ void ed_precomp16(
 
 void ed_mul(
 	ed_xyzt* R, const u32 X[8],
-	const ed_xy2d P[16][1<<16],
+	const ed_xy2d P[16][65536],
 	const ed_ctx* Ed
 ) {
 	u32 X_[8]; u256_copy(X_, X);

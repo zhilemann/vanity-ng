@@ -2,11 +2,12 @@
 #define CORE_H
 
 typedef unsigned int u32;
-u32 mul_hi(u32 x, u32 y);
 
 #if defined(__OPENCL_VERSION__)
+	typedef long i64;
 	typedef unsigned long u64;
 #else
+	typedef long long i64;
 	typedef unsigned long long u64;
 #endif
 
@@ -27,8 +28,17 @@ void u256_copy(u32 R[8], const u32 X[8]);
 u32 u256_is_zero(const u32 X[8]);
 ord u256_cmp(const u32 X[8], const u32 Y[8]);
 
-u32 u256_add(u32 R[8], const u32 X[8], const u32 Y[8]);
-u32 u256_sub(u32 R[8], const u32 X[8], const u32 Y[8]);
+u32 u256_add(
+	u32 R[8],
+	const u32 X[8],
+	const u32 Y[8]
+);
+
+u32 u256_sub(
+	u32 R[8],
+	const u32 X[8],
+	const u32 Y[8]
+);
 
 // `R ~= X + Y` (mod M)
 void u256_modadd(
@@ -46,7 +56,12 @@ void u256_modsub(
 	const u32 M[8]
 );
 
-void u256_mul(u32 R[8], const u32 X[8], const u32 Y[8]);
+void u256_mul(
+	u32 R[8],
+	const u32 X[8],
+	const u32 Y[8]
+);
+
 void u256_pow32(u32 R[8], const u32 X[8], u32 k);
 
 void u256_divmod(
@@ -55,15 +70,11 @@ void u256_divmod(
 );
 
 // `R * X ~= 1` (mod M)
-void u256_modinv(u32 R[8], const u32 X[8], const u32 M[8]);
+void u256_modinv(
+	u32 R[8], const u32 X[8], const u32 M[8]
+);
 
 void monty_init(monty_ctx* Mo, const u32 M[8]);
-
-// inject `X` into Montgomery space
-void monty_inj(
-	u32 R[8], const u32 X[8],
-	const monty_ctx* Mo
-);
 
 // extract `X` from Montgomery space
 void monty_redc(
@@ -80,10 +91,9 @@ void monty_mul(
 );
 
 // `R[i] * X[st*i] = 1` (mod M) in Montgomery space
-// allocates `32*n` bytes on stack
-void monty_invN(
-	u32 R[][8], const u32 X[][8],
-	u32 n, u32 st, const monty_ctx* Mo
+void monty_inv256(
+	u32 R[256][8], const u32 X[][8],
+	u32 st, const monty_ctx* Mo
 );
 
 /////////////////////////////////////////////////
@@ -135,10 +145,9 @@ typedef struct {
 void ed_init25519(ed_ctx* Ed);
 
 // `R[i] = P[i] / P[i].Z` in Montgomery space
-// allocates `64*n` bytes on stack
-void ed_normN(
-	ed_xyzt R[], const ed_xyzt P[],
-	u32 n, const ed_ctx* Ed
+void ed_norm256(
+	ed_xyzt R[256], const ed_xyzt P[256],
+	const ed_ctx* Ed
 );
 
 // `R = P + Q` in Montgomery space
@@ -159,14 +168,14 @@ void ed_add_xy2d(
 
 // precompute 16-bit combs of `Ed->G`
 void ed_precomp16(
-	ed_xy2d R[16][1<<16], const ed_ctx* Ed
+	ed_xy2d R[16][65536], const ed_ctx* Ed
 );
 
 // `R = X * P` in Montgomery space
 // uses combs from `ed_precomp16`
 void ed_mul(
 	ed_xyzt* R, const u32 X[8],
-	const ed_xy2d P[16][1<<16],
+	const ed_xy2d P[16][65536],
 	const ed_ctx* Ed
 );
 
