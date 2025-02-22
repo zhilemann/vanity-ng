@@ -1,193 +1,215 @@
 #include "core.h"
 
-inline static
-void u256_shr16(u32 R[8], const u32 X[8]) {
+static void u256_shr16(u32 R[8], const u32 X[8]) {
 	for (u32 i = 0; i < 7; i++)
 		R[i] = (X[i] >> 16) | (X[i+1] << 16);
 
 	R[7] = X[7] >> 16;
 }
 
-inline static void point4_zero(point4* R) {
+static void ed_xyzt_id(
+	ed_xyzt* R, const ed_ctx* Ed
+) {
 	u256_zero(R->X);
-	u256_zero(R->Y);
+	u256_copy(R->Y, Ed->Mo._1);
 	u256_zero(R->T);
-	u256_zero(R->Z);
+	u256_copy(R->Z, Ed->Mo._1);
 }
 
-inline static
-void point4_copy(point4* R, const point4* P) {
+static void ed_xyzt_copy(
+	ed_xyzt* R, const ed_xyzt* P
+) {
 	u256_copy(R->X, P->X);
 	u256_copy(R->Y, P->Y);
 	u256_copy(R->T, P->T);
 	u256_copy(R->Z, P->Z);
 }
 
-void edwards_init25519(edwards* Ed) {
-	monty* Mo = &Ed->Mo;
+static void ed_xy2d_init(
+	ed_xy2d* R, const ed_xyzt* P,
+	const ed_ctx* Ed
+) {
+	const monty_ctx* Mo = &Ed->Mo;
+
+	u256_modsub(R->A, P->Y, P->X, Mo->M);
+	u256_modadd(R->B, P->Y, P->X, Mo->M);
+	monty_mul(R->C, P->T, Ed->_2D, Mo);
+}
+
+void ed_init25519(ed_ctx* Ed) {
+	monty_ctx* Mo = &Ed->Mo;
 	monty_init(Mo, ED25519_M);
 
 	monty_inj(Ed->G.X, ED25519_GX, Mo);
 	monty_inj(Ed->G.Y, ED25519_GY, Mo);
 	monty_mul(Ed->G.T, Ed->G.X, Ed->G.Y, Mo);
 	u256_copy(Ed->G.Z, Mo->_1);
+
+	monty_inj(Ed->_2D, ED25519_D, Mo);
+	u256_modadd(Ed->_2D, Ed->_2D, Ed->_2D, Mo->M);
 }
 
-void edwards_normN(
-	point4 Rs[], const point4 Ps[],
-	u32 n, const edwards* Ed
+void ed_normN(
+	ed_xyzt R[], const ed_xyzt P[],
+	u32 n, const ed_ctx* Ed
 ) {
-	const monty* Mo = &Ed->Mo;
-	const u32 (*Zs)[8] = (void*)Ps[0].Z;
+	const monty_ctx* Mo = &Ed->Mo;
+	const u32 (*Zs)[8] = (void*)P[0].Z;
 
 	u32 Z_inv[n][8];
 	monty_invN(Z_inv, Zs, n, 4, Mo);
 
 	for (u32 i = 0; i < n; i++) {
-		monty_mul(Rs[i].X, Ps[i].X, Z_inv[i], Mo);
-		monty_mul(Rs[i].Y, Ps[i].Y, Z_inv[i], Mo);
-		monty_mul(Rs[i].T, Rs[i].X, Rs[i].Y, Mo);
-		u256_copy(Rs[i].Z, Mo->_1);
+		monty_mul(R[i].X, P[i].X, Z_inv[i], Mo);
+		monty_mul(R[i].Y, P[i].Y, Z_inv[i], Mo);
+		monty_mul(R[i].T, R[i].X, R[i].Y, Mo);
+		u256_copy(R[i].Z, Mo->_1);
 	}
 }
 
 /////////////////////////////////////////////////
 
-void edwards_add(
-	point4* R,
-	const point4* P,
-	const point4* Q,
-	const edwards* Ed
+static void ed_add(
+	ed_xyzt* R,
+	u32 A[8], u32 B[8],
+	u32 C[8], u32 D[8],
+	const ed_ctx* Ed
 ) {
-	const monty* Mo = &Ed->Mo;
+	const monty_ctx* Mo = &Ed->Mo;
 
-	if (u256_is_zero(P->Z)) {
-		point4_copy(R, Q);
-		return;
-	}
+	u32 T1[8], T2[8];
+	u32 *E = A, *F = B, *G = C, *H = D;
+
+	// `G = D+C`, `H = B+A`
+	u256_modadd(T1, D, C, Mo->M);
+	u256_modadd(T2, B, A, Mo->M);
+
+	// `E = B-A`, `F = D-C`
+	u256_modsub(E, B, A, Mo->M);
+	u256_modsub(F, D, C, Mo->M);
+
+	u256_copy(G, T1);
+	u256_copy(H, T2);
+
+	// `R->X = E*F`, `R->Y = G*H`
+	monty_mul(R->X, E, F, Mo);
+	monty_mul(R->Y, G, H, Mo);
+
+	// `R->T = E*H`, `R->Z = F*G`
+	monty_mul(R->T, E, H, Mo);
+	monty_mul(R->Z, F, G, Mo);
+}
+
+void ed_add_xyzt(
+	ed_xyzt* R,
+	const ed_xyzt* P,
+	const ed_xyzt* Q,
+	const ed_ctx* Ed
+) {
+	const monty_ctx* Mo = &Ed->Mo;
 
 	u32 A[8], B[8], C[8], D[8];
 
-	// `A = (P->Y - P->X) * (Q->Y + Q->X)`
-	// using B as `Q->Y + Q->X`
+	// `A = (P->Y - P->X)*(Q->Y - Q->X)`
+	// using B as `Q->Y - Q->X`
 	u256_modsub(A, P->Y, P->X, Mo->M);
-	u256_modadd(B, Q->Y, Q->X, Mo->M);
+	u256_modsub(B, Q->Y, Q->X, Mo->M);
 	monty_mul(A, A, B, Mo);
 
-	// `B = (P->Y + P->X) * (Q->Y - Q->X)`
-	// using C as `Q->Y - Q->X`
+	// `B = (P->Y + P->X)*(Q->Y + Q->X)`
+	// using C as `Q->Y + Q->X`
 	u256_modadd(B, P->Y, P->X, Mo->M);
-	u256_modsub(C, Q->Y, Q->X, Mo->M);
+	u256_modadd(C, Q->Y, Q->X, Mo->M);
 	monty_mul(B, B, C, Mo);
 
-	// `C = 2 * P->Z * Q->T`
-	monty_mul(C, P->Z, Q->T, Mo);
-	u256_modadd(C, C, C, Mo->M);
+	// C = Ed->_2D * P->T * Q->T
+	monty_mul(C, P->T, Q->T, Mo);
+	monty_mul(C, C, Ed->_2D, Mo);
 
-	// `D = 2 * P->T * Q->Z`
-	if (u256_cmp(Q->Z, Mo->_1) == EQ)
-		u256_modadd(D, P->T, P->T, Mo->M);
-	else {
-		monty_mul(D, P->T, Q->Z, Mo);
-		u256_modadd(D, D, D, Mo->M);
-	};
+	// D = 2 * P->Z * Q->Z
+	monty_mul(D, P->Z, Q->Z, Mo);
+	u256_modadd(D, D, D, Mo->M);
 
-	u32 E[8], F[8], G[8], H[8];
-
-	// `E = D+C`, `F = B-A`, `G = B+A`, `H = D-C`
-	u256_modadd(E, D, C, Mo->M);
-	u256_modsub(F, B, A, Mo->M);
-	u256_modadd(G, B, A, Mo->M);
-	u256_modsub(H, D, C, Mo->M);
-
-	// `R->X = E*F`, `R->Y = G*H`
-	// `R->T = E*H`, `R->Z = F*G`
-	monty_mul(R->X, E, F, Mo);
-	monty_mul(R->Y, G, H, Mo);
-	monty_mul(R->T, E, H, Mo);
-	monty_mul(R->Z, F, G, Mo);
+	ed_add(R, A, B, C, D, Ed);
 }
 
-/////////////////////////////////////////////////
-
-void edwards_double(
-	point4* R, const point4* P,
-	const edwards* Ed
+void ed_add_xy2d(
+	ed_xyzt* R,
+	const ed_xyzt* P,
+	const ed_xy2d* Q,
+	const ed_ctx* Ed
 ) {
-	const monty* Mo = &Ed->Mo;
+	const monty_ctx* Mo = &Ed->Mo;
 
 	u32 A[8], B[8], C[8], D[8];
 
-	// `A = P->X^2`, `B = P->Y^2`
-	monty_mul(A, P->X, P->X, Mo);
-	monty_mul(B, P->Y, P->Y, Mo);
+	// `A = (P->Y - P->X)*(Q->Y - Q->X)`
+	u256_modsub(A, P->Y, P->X, Mo->M);
+	monty_mul(A, A, Q->A, Mo);
 
-	// `C = 2 * P->Z^2`, `D = -A`
-	monty_mul(C, P->Z, P->Z, Mo);
-	u256_modadd(C, C, C, Mo->M);
-	u256_sub(D, Mo->M, A);
+	// `B = (P->Y + P->X)*(Q->Y + Q->X)`
+	u256_modadd(B, P->Y, P->X, Mo->M);
+	monty_mul(B, B, Q->B, Mo);
 
-	u32 E[8], F[8], G[8], H[8];
+	// C = Ed->_2D * P->T * Q->T
+	// D = 2 * P->Z * Q->Z
+	monty_mul(C, P->T, Q->C, Mo);
+	u256_modadd(D, P->Z, P->Z, Mo->M);
 
-	// `E = (P->X+P->Y)^2 - A - B`
-	u256_modadd(E, P->X, P->Y, Mo->M);
-	monty_mul(E, E, E, Mo);
-
-	u256_modsub(E, E, A, Mo->M);
-	u256_modsub(E, E, B, Mo->M);
-
-	// `G = D+B`, `F = G-C`, `H = D-B`
-	u256_modadd(G, D, B, Mo->M);
-	u256_modsub(F, G, C, Mo->M);
-	u256_modsub(H, D, B, Mo->M);
-
-	// `R->X = E*F`, `R->Y = G*H`
-	// `R->T = E*H`, `R->Z = F*G`
-	monty_mul(R->X, E, F, Mo);
-	monty_mul(R->Y, G, H, Mo);
-	monty_mul(R->T, E, H, Mo);
-	monty_mul(R->Z, F, G, Mo);
+	ed_add(R, A, B, C, D, Ed);
 }
 
 /////////////////////////////////////////////////
 
-void edwards_precomp16(
-	point4 Rs[16][1<<16],
-	const edwards* Ed
+// `Rs[i] = P + i * Q` in Montgomery space
+static void ed_cummul(
+	ed_xyzt Rs[],
+	const ed_xyzt* P,
+	const ed_xyzt* Q,
+	u32 n, const ed_ctx* Ed
 ) {
-	point4 B; point4_copy(&B, &Ed->G);
+	ed_xyzt_copy(&Rs[0], P);
+	for (u32 i = 1; i < n; i++)
+		ed_add_xyzt(&Rs[i], &Rs[i-1], Q, Ed);
+}
+
+void ed_precomp16(
+	ed_xy2d Rs[16][1<<16], const ed_ctx* Ed
+) {
+	ed_xyzt P, G, T[64];
+	ed_xyzt_copy(&G, &Ed->G);
 
 	for (u32 i = 0; i < 16; i++) {
-		point4* Rs0 = Rs[i];
+		ed_xyzt_id(&P, Ed);
 
-		point4_zero(&Rs0[0]);
-		Rs0[0].Z[0] = 1;
+		for (u32 j = 0; j < (1<<16); j += 64) {
+			ed_cummul(T, &P, &G, 64, Ed);
 
-		point4_copy(&Rs0[1], &B);
-		edwards_double(&Rs0[2], &B, Ed);
+			// `P = P + 64 * G`
+			ed_add_xyzt(&P, &T[63], &G, Ed);
+			ed_normN(T, T, 64, Ed);
 
-		for (u32 j = 3; j < (1<<16); j++)
-			edwards_add(&Rs0[j], &Rs0[j-1], &B, Ed);
+			for (u32 k = 0; k < 64; k++)
+				ed_xy2d_init(&Rs[i][j+k], &T[k], Ed);
+		}
 
-		for (u32 j = 0; j < (1<<16); j += 64)
-			edwards_normN(&Rs0[j], &Rs0[j], 64, Ed);
-
+		// `G = (2^16) * G`
 		for (u32 j = 0; j < 16; j++)
-			edwards_double(&B, &B, Ed);
+			ed_add_xyzt(&G, &G, &G, Ed);
 	}
 }
 
-void edwards_mul(
-	point4* R, const u32 X[8],
-	const point4 Ps[16][1<<16],
-	const edwards* Ed
+void ed_mul(
+	ed_xyzt* R, const u32 X[8],
+	const ed_xy2d P[16][1<<16],
+	const ed_ctx* Ed
 ) {
 	u32 X_[8]; u256_copy(X_, X);
-	point4_zero(R);
+	ed_xyzt_id(R, Ed);
 
 	for (u32 i = 0; i < 16; i++) {
 		u32 k = X_[0] & 0xffff;
-		edwards_add(R, R, &Ps[i][k], Ed);
+		ed_add_xy2d(R, R, &P[i][k], Ed);
 		u256_shr16(X_, X_);
 	}
 }
