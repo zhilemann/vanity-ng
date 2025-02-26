@@ -1,6 +1,7 @@
 #if !defined(CORE_H)
 #define CORE_H
 
+typedef unsigned char u8;
 typedef unsigned int u32;
 
 #if defined(__OPENCL_VERSION__)
@@ -56,14 +57,17 @@ void u256_modsub(
 	const u32 M[8]
 );
 
+// `R = X * Y`
 void u256_mul(
 	u32 R[8],
 	const u32 X[8],
 	const u32 Y[8]
 );
 
+// `R = X ^ k`
 void u256_pow32(u32 R[8], const u32 X[8], u32 k);
 
+// `Rq = X / Y`, `Rr = X % Y`
 void u256_divmod(
 	u32 Rq[8], u32 Rr[8],
 	const u32 X[8], const u32 Y[8]
@@ -71,15 +75,16 @@ void u256_divmod(
 
 // `R * X ~= 1` (mod M)
 void u256_modinv(
-	u32 R[8], const u32 X[8], const u32 M[8]
+	u32 R[8], const u32 X[8],
+	const u32 M[8]
 );
 
 void monty_init(monty_ctx* Mo, const u32 M[8]);
 
 // extract `X` from Montgomery space
 void monty_redc(
-    u32 R[8], const u32 X[8],
-    const monty_ctx *Mo
+	u32 R[8], const u32 X[8],
+	const monty_ctx* Mo
 );
 
 // `R = X * Y` (mod M) in Montgomery space
@@ -87,7 +92,7 @@ void monty_mul(
 	u32 R[8],
 	const u32 X[8],
 	const u32 Y[8],
-	const monty_ctx *Mo
+	const monty_ctx* Mo
 );
 
 // `R[i] * X[st*i] = 1` (mod M) in Montgomery space
@@ -98,25 +103,6 @@ void monty_inv256(
 
 /////////////////////////////////////////////////
 
-static const u32 ED25519_M[8] = {
-	0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff,
-	0xffffffff, 0xffffffff, 0xffffffff, 0x7fffffff
-};
-
-static const u32 ED25519_D[8] = {
-	0x135978a3, 0x75eb4dca, 0x4141d8ab, 0x00700a4d,
-	0x7779e898, 0x8cc74079, 0x2b6ffe73, 0x52036cee
-};
-
-static const u32 ED25519_GX[8] = {
-	0x8f25d51a, 0xc9562d60, 0x9525a7b2, 0x692cc760,
-	0xfdd6dc5c, 0xc0a4e231, 0xcd6e53fe, 0x216936d3
-};
-
-static const u32 ED25519_GY[8] = {
-	0x66666658, 0x66666666, 0x66666666, 0x66666666,
-	0x66666666, 0x66666666, 0x66666666, 0x66666666
-};
 
 // point in extended coordinates
 typedef struct {
@@ -146,7 +132,8 @@ void ed_init25519(ed_ctx* Ed);
 
 // `R[i] = P[i] / P[i].Z` in Montgomery space
 void ed_norm256(
-	ed_xyzt R[256], const ed_xyzt P[256],
+	ed_xyzt R[256],
+	const ed_xyzt P[256],
 	const ed_ctx* Ed
 );
 
@@ -168,7 +155,8 @@ void ed_add_xy2d(
 
 // precompute 16-bit combs of `Ed->G`
 void ed_precomp16(
-	ed_xy2d R[16][65536], const ed_ctx* Ed
+	ed_xy2d R[16][65536],
+	const ed_ctx* Ed
 );
 
 // `R = X * P` in Montgomery space
@@ -178,5 +166,13 @@ void ed_mul(
 	const ed_xy2d P[16][65536],
 	const ed_ctx* Ed
 );
+
+/////////////////////////////////////////////////
+
+// add `1` bit and length to block `R`
+void sha512_pad(u8 R[128], u32 n);
+
+// compute SHA-512 for block `X`
+void sha512(u64 R[8], const u8 X[128]);
 
 #endif

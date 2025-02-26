@@ -1,4 +1,5 @@
 #include "core.h"
+#include "const.h"
 
 static void u256_shr16(u32 R[8], const u32 X[8]) {
 	for (u32 i = 0; i < 7; i++)
@@ -7,18 +8,14 @@ static void u256_shr16(u32 R[8], const u32 X[8]) {
 	R[7] = X[7] >> 16;
 }
 
-static void ed_xyzt_id(
-	ed_xyzt* R, const ed_ctx* Ed
-) {
+static void ed_xyzt_id(ed_xyzt* R, const ed_ctx* Ed) {
 	u256_zero(R->X);
 	u256_copy(R->Y, Ed->Mo._1);
 	u256_zero(R->T);
 	u256_copy(R->Z, Ed->Mo._1);
 }
 
-static void ed_xyzt_copy(
-	ed_xyzt* R, const ed_xyzt* P
-) {
+static void ed_xyzt_copy(ed_xyzt* R, const ed_xyzt* P) {
 	u256_copy(R->X, P->X);
 	u256_copy(R->Y, P->Y);
 	u256_copy(R->T, P->T);
@@ -50,7 +47,8 @@ void ed_init25519(ed_ctx* Ed) {
 }
 
 void ed_norm256(
-	ed_xyzt R[256], const ed_xyzt P[256],
+	ed_xyzt R[256],
+	const ed_xyzt P[256],
 	const ed_ctx* Ed
 ) {
 	const monty_ctx* Mo = &Ed->Mo;
@@ -79,15 +77,15 @@ static void ed_add(
 
 	u32 E[8], F[8], G[8], H[8];
 
-	// `E = B-A`, `F = D-C`
-	// `G = D+C`, `H = B+A`
+	// `E = B - A`, `F = D - C`
+	// `G = D + C`, `H = B + A`
 	u256_modsub(E, B, A, Mo->M);
 	u256_modsub(F, D, C, Mo->M);
 	u256_modadd(G, D, C, Mo->M);
 	u256_modadd(H, B, A, Mo->M);
 
-	// `R->X = E*F`, `R->Y = G*H`
-	// `R->T = E*H`, `R->Z = F*G`
+	// `R->X = E * F`, `R->Y = G * H`
+	// `R->T = E * H`, `R->Z = F * G`
 	monty_mul(R->X, E, F, Mo);
 	monty_mul(R->Y, G, H, Mo);
 	monty_mul(R->T, E, H, Mo);
@@ -104,13 +102,13 @@ void ed_add_xyzt(
 
 	u32 A[8], B[8], C[8], D[8];
 
-	// `A = (P->Y - P->X)*(Q->Y - Q->X)`
+	// `A = (P->Y - P->X) * (Q->Y - Q->X)`
 	// using B as `Q->Y - Q->X`
 	u256_modsub(A, P->Y, P->X, Mo->M);
 	u256_modsub(B, Q->Y, Q->X, Mo->M);
 	monty_mul(A, A, B, Mo);
 
-	// `B = (P->Y + P->X)*(Q->Y + Q->X)`
+	// `B = (P->Y + P->X) * (Q->Y + Q->X)`
 	// using C as `Q->Y + Q->X`
 	u256_modadd(B, P->Y, P->X, Mo->M);
 	u256_modadd(C, Q->Y, Q->X, Mo->M);
@@ -137,11 +135,11 @@ void ed_add_xy2d(
 
 	u32 A[8], B[8], C[8], D[8];
 
-	// `A = (P->Y - P->X)*(Q->Y - Q->X)`
+	// `A = (P->Y - P->X) * (Q->Y - Q->X)`
 	u256_modsub(A, P->Y, P->X, Mo->M);
 	monty_mul(A, A, Q->A, Mo);
 
-	// `B = (P->Y + P->X)*(Q->Y + Q->X)`
+	// `B = (P->Y + P->X) * (Q->Y + Q->X)`
 	u256_modadd(B, P->Y, P->X, Mo->M);
 	monty_mul(B, B, Q->B, Mo);
 
@@ -167,25 +165,35 @@ static void ed_cummul(
 		ed_add_xyzt(&Rs[i], &Rs[i-1], Q, Ed);
 }
 
+static void ed_precomp1(
+	ed_xy2d R[65536],
+	ed_xyzt* P, const ed_xyzt* G,
+	const ed_ctx* Ed
+) {
+	ed_xyzt T[256];
+
+	for (u32 j = 0; j < 65536; j += 256) {
+		ed_cummul(T, P, G, 256, Ed);
+
+		// `P = P + 256 * G`
+		ed_add_xyzt(P, &T[255], G, Ed);
+		ed_norm256(T, T, Ed);
+
+		for (u32 k = 0; k < 256; k++)
+			ed_xy2d_init(&R[j + k], &T[k], Ed);
+	}
+}
+
 void ed_precomp16(
-	ed_xy2d Rs[16][65536], const ed_ctx* Ed
+	ed_xy2d R[16][65536],
+	const ed_ctx* Ed
 ) {
 	ed_xyzt P, G, T[256];
 	ed_xyzt_copy(&G, &Ed->G);
 
 	for (u32 i = 0; i < 16; i++) {
 		ed_xyzt_id(&P, Ed);
-
-		for (u32 j = 0; j < 65536; j += 256) {
-			ed_cummul(T, &P, &G, 256, Ed);
-
-			// `P = P + 256 * G`
-			ed_add_xyzt(&P, &T[255], &G, Ed);
-			ed_norm256(T, T, Ed);
-
-			for (u32 k = 0; k < 256; k++)
-				ed_xy2d_init(&Rs[i][j+k], &T[k], Ed);
-		}
+		ed_precomp1(R[i], &P, &G, Ed);
 
 		// `G = (2^16) * G`
 		for (u32 j = 0; j < 16; j++)

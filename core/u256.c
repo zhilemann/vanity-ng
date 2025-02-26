@@ -14,9 +14,7 @@ void u256_copy(u32 R[8], const u32 X[8]) {
 }
 
 // `(retval ...R) = -(extX ...X)`
-static u32 u256_neg(
-	u32 R[8], const u32 X[8], u32 extX
-) {
+static u32 u256_neg(u32 R[8], const u32 X[8], u32 extX) {
 	u64 xx = 1;
 	for (u32 i = 0; i < 8; i++) {
 		xx += ~X[i];
@@ -34,9 +32,7 @@ static u32 u256_width(const u32 X[8]) {
 
 static u64 u256_get64(const u32 X[8], u32 i) {
 	u64 x = X[i];
-	if (i < 7)
-		x |= (u64)X[i+1] << 32;
-
+	if (i < 7) { x |= (u64)X[i+1] << 32; }
 	return x;
 }
 
@@ -53,14 +49,16 @@ ord u256_cmp(const u32 X[8], const u32 Y[8]) {
 		if (X[i] > Y[i]) { gt |= (1 << i); }
 	}
 
-	if (lt > gt) { return LT; }
-	else if (lt < gt) { return GT; }
-	else { return EQ; }
+	if (lt > gt)
+		return LT;
+	else if (lt < gt)
+		return GT;
+	else
+		return EQ;
 }
 
-static void u256_shr1(
-	u32 R[8], const u32 X[8], u32 ext
-) {
+
+static void u256_shr1(u32 R[8], const u32 X[8], u32 ext) {
 	for (u32 i = 0; i < 7; i++)
 		R[i] = (X[i] >> 1) | (X[i+1] << 31);
 
@@ -68,14 +66,9 @@ static void u256_shr1(
 }
 
 // `R = X >> (32*n)`
-static void u256_shl32n(
-	u32 R[8], const u32 X[8], u32 n
-) {
-	for (u32 i = 7; i+1 > n; i--)
-		R[i] = X[i-n];
-
-	for (u32 i = 0; i < n; i++)
-		R[i] = 0;
+static void u256_shl32n(u32 R[8], const u32 X[8], u32 n) {
+	for (u32 i = 7; i+1 > n; i--) { R[i] = X[i-n]; }
+	for (u32 i = 0;   i < n; i++) { R[i] = 0; }
 }
 
 /////////////////////////////////////////////////
@@ -115,7 +108,6 @@ void u256_modadd(
 	const u32 M[8]
 ) {
 	u32 ext = u256_add(R, X, Y);
-
 	if (ext || u256_cmp(R, M) > LT)
 		u256_sub(R, R, M);
 }
@@ -147,19 +139,77 @@ static u32 u256_muladd(
 static u32 u256_mulsub(
 	u32 R[8], u32 a, const u32 X[8]
 ) {
-	i64 xx = 0;
+	i64 xx = 0, yy = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx += R[i] - a * (i64)X[i];
-		R[i] = xx; xx >>= 32;
+		xx = xx + (u64)R[i];
+		yy = xx - a * (u64)X[i];
+
+		R[i] = yy;
+
+		u64 bf = yy > xx ? -1 : 0;
+		xx = (yy >> 32) | (bf << 32);
 	}
 
 	return xx;
 }
 
+//////////////////////////////////////////////////
+
+void u256_mul512(u32 R[8], const u32 X[8], const u32 Y[8]) {
+	u32 T[16] = {};
+	for (u32 i = 0; i < 8; i++)
+		u256_muladd(T+i, X[i], Y);
+
+	u256_copy(R, T);
+}
+
+void u256_pow32(u32 R[8], const u32 X[8], u32 k) {
+	u32 X1[16], T[16] = {1};
+	u256_copy(X1, X);
+
+	while (k > 0) {
+		if (k & 1) { u256_mul512(T, T, X1); }
+		u256_mul512(X1, X1, X1); k >>= 1;
+	}
+
+	u256_copy(R, T);
+}
+
+void u256_divmod(
+	u32 Rq[8], u32 Rr[8],
+	const u32 X[8], const u32 Y[8]
+) {
+	u256_zero(Rq);
+	u256_copy(Rr, X);
+	if (u256_cmp(X, Y) == LT) return;
+
+	u32 n = u256_width(X);
+	u32 m = u256_width(Y);
+
+	u32 Y1[8];
+	for (u32 i = n; i+1 > m; i--) {
+		u256_shl32n(Y1, Y, i - m);
+
+		while (u256_cmp(Rr, Y1) > LT) {
+			// guess the quotient digit
+			// see Handbook of Applied Cryptography, 14.20
+			u32 k = u256_get64(Rr, i) / (1 + (u64)Y[m]);
+
+			if (k > 0) {
+				Rq[i - m] += k;
+				u256_mulsub(Rr, k, Y1);
+			} else {
+				Rq[i - m] += 1;
+				u256_sub(Rr, Rr, Y1);
+			}
+		}
+	}
+}
+
 /////////////////////////////////////////////////
 
 static void u256_gcd_step(
-	u256_gcd *gcd,
+	u256_gcd* gcd,
 	const u32 X[8], const u32 Y[8]
 ) {
 	while (!(gcd->X[0] & 1)) {
@@ -178,9 +228,9 @@ static void u256_gcd_step(
 	}
 }
 
-static void u256_gcd_swap(u256_gcd *gcd1, u256_gcd *gcd2) {
+static void u256_gcd_swap(u256_gcd* gcd1, u256_gcd* gcd2) {
 	if (u256_cmp(gcd1->X, gcd2->X) == LT) {
-		u256_gcd *tmp = gcd1;
+		u256_gcd* tmp = gcd1;
 		gcd1 = gcd2; gcd2 = tmp;
 	}
 
@@ -193,9 +243,7 @@ static void u256_gcd_swap(u256_gcd *gcd1, u256_gcd *gcd2) {
 	gcd1->extB += u256_sub(gcd1->B, gcd1->B, gcd2->B);
 }
 
-void u256_modinv(
-	u32 R[8], const u32 X[8], const u32 M[8]
-) {
+void u256_modinv(u32 R[8], const u32 X[8], const u32 M[8]) {
 	// see Handbook of Applied Cryptography, 14.61
 	u256_gcd gcd1 = { {}, { 1 }, {} };
 	u256_gcd gcd2 = { {}, {}, { 1 } };
@@ -223,60 +271,6 @@ void u256_modinv(
 	u256_copy(R, T);
 }
 
-//////////////////////////////////////////////////
-
-void u256_mul(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8]
-) {
-	u32 T[16] = {};
-	for (u32 i = 0; i < 8; i++)
-		u256_muladd(T+i, X[i], Y);
-
-	u256_copy(R, T);
-}
-
-void u256_pow32(u32 R[8], const u32 X[8], u32 k) {
-	u256_zero(R); R[0] = 1;
-
-	u32 B[8]; u256_copy(B, X);
-	while (k > 0) {
-		if (k & 1) { u256_mul(R, R, B); }
-		u256_mul(B, B, B); k >>= 1;
-	}
-}
-
-void u256_divmod(
-	u32 Rq[8], u32 Rr[8],
-	const u32 X[8], const u32 Y[8]
-) {
-	u256_zero(Rq); u256_copy(Rr, X);
-	if (u256_cmp(X, Y) == LT) return;
-
-	u32 n = u256_width(X);
-	u32 m = u256_width(Y);
-
-	u32 Y1[8];
-	for (u32 i = n; i+1 > m; i--) {
-		u256_shl32n(Y1, Y, i-m);
-
-		while (u256_cmp(Rr, Y1) > LT) {
-			// guess the quotient digit
-			// see Handbook of Applied Cryptography, 14.20
-			u32 k = u256_get64(Rr, i) / (1 + (u64)Y[m]);
-
-			if (k > 0) {
-				Rq[i-m] += k;
-				u256_mulsub(Rr, k, Y1);
-			} else {
-				Rq[i-m] += 1;
-				u256_sub(Rr, Rr, Y1);
-			}
-		}
-	}
-}
-
 /////////////////////////////////////////////////
 
 void monty_init(monty_ctx* Mo, const u32 M[8]) {
@@ -297,7 +291,7 @@ void monty_init(monty_ctx* Mo, const u32 M[8]) {
 
 void monty_redc(
 	u32 R[8], const u32 X[8],
-	const monty_ctx *Mo
+	const monty_ctx* Mo
 ) {
 	// see Handbook of Applied Cryptography, 14.32
 	u32 T[16] = {}; u256_copy(T, X);
@@ -317,13 +311,14 @@ void monty_mul(
 	u32 R[8],
 	const u32 X[8],
 	const u32 Y[8],
-	const monty_ctx *Mo
+	const monty_ctx* Mo
 ) {
 	// see Handbook of Applied Cryptography, 14.36
-	u32 T[16] = {}; u64 xx = 0;
+	u32 T[16] = {};
 
+	u64 xx = 0;
 	for (u32 i = 0; i < 8; i++) {
-		u32 a = (T[i] + X[i]*Y[0]) * Mo->inv32;
+		u32 a = (T[i] + X[i] * Y[0]) * Mo->inv32;
 
 		xx += u256_muladd(T+i, X[i], Y);
 		xx += u256_muladd(T+i, a, Mo->M);
@@ -352,7 +347,7 @@ void monty_inv256(
 	monty_mul(I, I, Mo->R3, Mo);
 
 	for (u32 i = 255; i+1 > 1; i--) {
-		// `I * T[i-1] * X[st-i] ~= 1` (mod M)
+		// `I * T[i-1] * X[st*i] ~= 1` (mod M)
 		monty_mul(R[i], I, T[i-1], Mo);
 		monty_mul(I, I, X[st*i], Mo);
 	}
