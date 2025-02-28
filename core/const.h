@@ -1,4 +1,12 @@
+#if !defined(CONST_H)
+#define CONST_H
+
 #include "core.h"
+
+static const u32 U32_SWAP = 0xff00ff00;
+
+static const u64 U64_SWAP1 = 0xff00ff00ff00ff00;
+static const u64 U64_SWAP2 = 0xffff0000ffff0000;
 
 static const u32 ED25519_M[8] = {
 	0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff,
@@ -69,3 +77,5 @@ static const u64 SHA512_K[80] = {
 	0x4cc5d4becb3e42b6, 0x597f299cfc657e2a,
 	0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
 };
+
+#endif

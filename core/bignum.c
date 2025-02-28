@@ -1,9 +1,37 @@
 #include "core.h"
+#include "const.h"
 
 typedef struct {
 	u32 X[8], A[8], B[8];
 	u32 extA, extB;
 } u256_gcd;
+
+u32 u32_rol(u32 x, u32 n) {
+	return (x << n) | (x >> (32-n));
+}
+
+u32 u32_ror(u32 x, u32 n) {
+	return (x >> n) | (x << (32-n));
+}
+
+u64 u64_rol(u64 x, u32 n) {
+	return (x << n) | (x >> (64-n));
+}
+
+u64 u64_ror(u64 x, u32 n) {
+	return (x >> n) | (x << (64-n));
+}
+
+u32 u32_bswap(u32 x) {
+	x = (x << 8) & U32_SWAP | (x >> 8) & ~U32_SWAP;
+    return (x << 16) | (x >> 16);
+}
+
+u64 u64_bswap(u64 x) {
+	x = ((x << 8) & U64_SWAP1) | ((x >> 8) & ~U64_SWAP1);
+	x = ((x << 16) & U64_SWAP2) | ((x >> 16) & ~U64_SWAP2);
+    return (x << 32) | (x >> 32);
+}
 
 void u256_zero(u32 R[8]) {
 	for (u32 i = 0; i < 8; i++) { R[i] = 0; }
@@ -11,6 +39,16 @@ void u256_zero(u32 R[8]) {
 
 void u256_copy(u32 R[8], const u32 X[8]) {
 	for (u32 i = 0; i < 8; i++) { R[i] = X[i]; }
+}
+
+void u256_bswap(u32 R[8], const u32 X[8]) {
+	for (u32 i = 0; i < 8; i++)
+		R[i] = u32_bswap(X[i]);
+
+	for (u32 i = 0; i < 4; i++) {
+		u32 t = R[i];
+		R[i] = R[7-i], R[7-i] = t;
+	}
 }
 
 // `(retval ...R) = -(extX ...X)`
@@ -155,7 +193,7 @@ static u32 u256_mulsub(
 
 //////////////////////////////////////////////////
 
-void u256_mul512(u32 R[8], const u32 X[8], const u32 Y[8]) {
+void u256_mul(u32 R[8], const u32 X[8], const u32 Y[8]) {
 	u32 T[16] = {};
 	for (u32 i = 0; i < 8; i++)
 		u256_muladd(T+i, X[i], Y);
@@ -168,8 +206,8 @@ void u256_pow32(u32 R[8], const u32 X[8], u32 k) {
 	u256_copy(X1, X);
 
 	while (k > 0) {
-		if (k & 1) { u256_mul512(T, T, X1); }
-		u256_mul512(X1, X1, X1); k >>= 1;
+		if (k & 1) { u256_mul(T, T, X1); }
+		u256_mul(X1, X1, X1); k >>= 1;
 	}
 
 	u256_copy(R, T);
@@ -276,14 +314,14 @@ void u256_modinv(u32 R[8], const u32 X[8], const u32 M[8]) {
 void monty_init(monty_ctx* Mo, const u32 M[8]) {
 	u256_copy(Mo->M, M);
 
-	u32 T[8] = { 0, 1 }; // T = 2^32
+	/* u32 T[8] = { 0, 1 }; // T = 2^32
 	u256_modinv(T, M, T);
-	Mo->inv32 = T[0] * -1;
+	Mo->inv32 = T[0] * -1; */
 
 	u256_zero(Mo->R2); Mo->R2[0] = 1;
-	for (u32 i = 0; i < 512; i++)
+	/* for (u32 i = 0; i < 512; i++)
 		// Mo->R2 = (Mo->R2 << 1) % M
-		u256_modadd(Mo->R2, Mo->R2, Mo->R2, M);
+		u256_modadd(Mo->R2, Mo->R2, Mo->R2, M); */
 
 	monty_redc(Mo->_1, Mo->R2, Mo);
 	monty_mul(Mo->R3, Mo->R2, Mo->R2, Mo);
@@ -293,6 +331,9 @@ void monty_redc(
 	u32 R[8], const u32 X[8],
 	const monty_ctx* Mo
 ) {
+	u256_copy(R, X);
+
+	/*
 	// see Handbook of Applied Cryptography, 14.32
 	u32 T[16] = {}; u256_copy(T, X);
 
@@ -305,6 +346,7 @@ void monty_redc(
 		u256_sub(T+8, T+8, Mo->M);
 
 	u256_copy(R, T+8);
+	*/
 }
 
 void monty_mul(
@@ -313,6 +355,22 @@ void monty_mul(
 	const u32 Y[8],
 	const monty_ctx* Mo
 ) {
+	u32 T[16] = {};
+	for (u32 i = 0; i < 8; i++)
+		T[i+8] += u256_muladd(T+i, X[i], Y);
+
+	u64 ext = 38 * u256_muladd(T, 38, T+8);
+	for (u32 i = 0; i < 8; i++) {
+		ext += T[i];
+		T[i] = ext; ext >>= 32;
+	}
+
+	if (u256_cmp(T, Mo->M) > LT)
+		u256_sub(T, T, Mo->M);
+
+	u256_copy(R, T);
+	
+	/*
 	// see Handbook of Applied Cryptography, 14.36
 	u32 T[16] = {};
 
@@ -330,6 +388,7 @@ void monty_mul(
 		u256_sub(T+8, T+8, Mo->M);
 
 	u256_copy(R, T+8);
+	*/
 }
 
 void monty_inv256(
@@ -344,7 +403,7 @@ void monty_inv256(
 		monty_mul(T[i], T[i-1], X[st*i], Mo);
 
 	u256_modinv(I, T[255], Mo->M);
-	monty_mul(I, I, Mo->R3, Mo);
+	// monty_mul(I, I, Mo->R3, Mo);
 
 	for (u32 i = 255; i+1 > 1; i--) {
 		// `I * T[i-1] * X[st*i] ~= 1` (mod M)

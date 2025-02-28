@@ -215,3 +215,25 @@ void ed_mul(
 		u256_shr16(X_, X_);
 	}
 }
+
+/////////////////////////////////////////////////
+
+void ed25519_pubkey(u32 R[8], const u8 Pr[32]) {
+	u8 B[128] = {};
+	for (u32 i = 0; i < 32; i++)
+		B[i] = Pr[i];
+
+	u64 H[8]; sha512(H, B, 32);
+	for (u32 i = 0; i < 4; i++)
+		U64(R)[i] = u64_bswap(H[i]);
+
+	U8(R)[0] &= 0xf8;
+	U8(R)[31] &= 0x7f;
+	U8(R)[31] |= 0x40;
+}
+
+void ed25519_encode(u8 R[32], const ed_xyzt* P) {
+	u256_copy(U32(R), P->Y);
+	R[31] |= (P->X[0] & 1) << 7;
+	u256_bswap(U32(R), U32(R));
+}

@@ -4,6 +4,10 @@
 typedef unsigned char u8;
 typedef unsigned int u32;
 
+#define U8(x) ((u8*)x)
+#define U32(x) ((u32*)x)
+#define U64(x) ((u64*)x)
+
 #if defined(__OPENCL_VERSION__)
 	typedef long i64;
 	typedef unsigned long u64;
@@ -23,8 +27,17 @@ typedef struct {
 	u32 R3[8]; // `R3 ~= (2^256)^3` (mod `M`)
 } monty_ctx;
 
+u32 u32_rol(u32 x, u32 n);
+u32 u32_ror(u32 x, u32 n);
+u64 u64_rol(u64 x, u32 n);
+u64 u64_ror(u64 x, u32 n);
+
+u32 u32_bswap(u32 x);
+u64 u64_bswap(u64 x);
+
 void u256_zero(u32 R[8]);
 void u256_copy(u32 R[8], const u32 X[8]);
+void u256_bswap(u32 R[8], const u32 X[8]);
 
 u32 u256_is_zero(const u32 X[8]);
 ord u256_cmp(const u32 X[8], const u32 Y[8]);
@@ -172,7 +185,7 @@ void ed_mul(
 // add `1` bit and length to block `R`
 void sha512_pad(u8 R[128], u32 n);
 
-// compute SHA-512 for block `X`
-void sha512(u64 R[8], const u8 X[128]);
+// `SHA-512(X)`, assumes `n < 112`
+void sha512(u64 R[8], const u8 X[], u32 n);
 
 #endif
