@@ -1,32 +1,7 @@
-#if !defined(CONST_H)
-#define CONST_H
+#if !defined(SHA2_H)
+#define SHA2_H
 
 #include "core.h"
-
-static const u32 U32_SWAP = 0xff00ff00;
-
-static const u64 U64_SWAP1 = 0xff00ff00ff00ff00;
-static const u64 U64_SWAP2 = 0xffff0000ffff0000;
-
-static const u32 ED25519_M[8] = {
-	0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff,
-	0xffffffff, 0xffffffff, 0xffffffff, 0x7fffffff,
-};
-
-static const u32 ED25519_D[8] = {
-	0x135978a3, 0x75eb4dca, 0x4141d8ab, 0x00700a4d,
-	0x7779e898, 0x8cc74079, 0x2b6ffe73, 0x52036cee,
-};
-
-static const u32 ED25519_GX[8] = {
-	0x8f25d51a, 0xc9562d60, 0x9525a7b2, 0x692cc760,
-	0xfdd6dc5c, 0xc0a4e231, 0xcd6e53fe, 0x216936d3,
-};
-
-static const u32 ED25519_GY[8] = {
-	0x66666658, 0x66666666, 0x66666666, 0x66666666,
-	0x66666666, 0x66666666, 0x66666666, 0x66666666,
-};
 
 static const u64 SHA512_IV[8] = {
 	0x6a09e667f3bcc908, 0xbb67ae8584caa73b,

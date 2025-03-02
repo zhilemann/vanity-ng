@@ -2,11 +2,9 @@
 #define CORE_H
 
 typedef unsigned char u8;
-typedef unsigned int u32;
 
-#define U8(x) ((u8*)x)
-#define U32(x) ((u32*)x)
-#define U64(x) ((u64*)x)
+typedef unsigned int u32;
+typedef u32 bn[8];
 
 #if defined(__OPENCL_VERSION__)
 	typedef long i64;
@@ -16,174 +14,67 @@ typedef unsigned int u32;
 	typedef unsigned long long u64;
 #endif
 
+#define U8(x) ((u8*)x)
+#define U32(x) ((u32*)x)
+#define U64(x) ((u64*)x)
+
 typedef enum { LT, EQ, GT } ord;
 
-// Montgomery space
-typedef struct {
-	u32 M[8], inv32; // `M * inv32 ~= -1` (mod `M`)
+u32 u32_rol(u32 x, u32 n); u32 u32_ror(u32 x, u32 n);
+u64 u64_rol(u64 x, u32 n); u64 u64_ror(u64 x, u32 n);
 
-	u32 _1[8]; // `_1 ~= 2^256` (mod `M`)
-	u32 R2[8]; // `R2 ~= (2^256)^2` (mod `M`)
-	u32 R3[8]; // `R3 ~= (2^256)^3` (mod `M`)
-} monty_ctx;
+u32 u32_bswap(u32 x); u64 u64_bswap(u64 x);
 
-u32 u32_rol(u32 x, u32 n);
-u32 u32_ror(u32 x, u32 n);
-u64 u64_rol(u64 x, u32 n);
-u64 u64_ror(u64 x, u32 n);
+void u256_zero(bn R);
+void u256_copy(bn R, const bn X);
+void u256_bswap(bn R, const bn X);
 
-u32 u32_bswap(u32 x);
-u64 u64_bswap(u64 x);
+void bn_zero(bn R);
+void bn_copy(bn R, const bn X);
+void bn_bswap(bn R, const bn X);
 
-void u256_zero(u32 R[8]);
-void u256_copy(u32 R[8], const u32 X[8]);
-void u256_bswap(u32 R[8], const u32 X[8]);
+u32 bn_is_zero(const bn X);
+ord bn_cmp(const bn X, const bn Y);
 
-u32 u256_is_zero(const u32 X[8]);
-ord u256_cmp(const u32 X[8], const u32 Y[8]);
+u32 bn_add32(bn R, u32 x);
+u32 bn_add(bn R, const bn X, const bn Y);
+u32 bn_sub(bn R, const bn X, const bn Y);
 
-u32 u256_add(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8]
-);
+void bn_modadd(bn R, const bn X, const bn Y, const bn M);
+void bn_modsub(bn R, const bn X, const bn Y, const bn M);
 
-u32 u256_sub(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8]
-);
+u32 bn_muladd(bn R, u32 a, const bn X);
 
-// `R ~= X + Y` (mod M)
-void u256_modadd(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8],
-	const u32 M[8]
-);
+void bn_mulw(u32 R[16], const bn X, const bn Y);
 
-// `R ~= X - Y` (mod M)
-void u256_modsub(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8],
-	const u32 M[8]
-);
-
-// `R = X * Y`
-void u256_mul(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8]
-);
-
-// `R = X ^ k`
-void u256_pow32(u32 R[8], const u32 X[8], u32 k);
-
-// `Rq = X / Y`, `Rr = X % Y`
-void u256_divmod(
-	u32 Rq[8], u32 Rr[8],
-	const u32 X[8], const u32 Y[8]
-);
-
-// `R * X ~= 1` (mod M)
-void u256_modinv(
-	u32 R[8], const u32 X[8],
-	const u32 M[8]
-);
-
-void monty_init(monty_ctx* Mo, const u32 M[8]);
-
-// extract `X` from Montgomery space
-void monty_redc(
-	u32 R[8], const u32 X[8],
-	const monty_ctx* Mo
-);
-
-// `R = X * Y` (mod M) in Montgomery space
-void monty_mul(
-	u32 R[8],
-	const u32 X[8],
-	const u32 Y[8],
-	const monty_ctx* Mo
-);
-
-// `R[i] * X[st*i] = 1` (mod M) in Montgomery space
-void monty_inv256(
-	u32 R[256][8], const u32 X[][8],
-	u32 st, const monty_ctx* Mo
-);
+void bn_divmod(bn Rq, bn Rr, const bn X, const bn Y);
+void bn_modinv(bn R, const bn X, const bn M);
 
 /////////////////////////////////////////////////
 
-
-// point in extended coordinates
 typedef struct {
-	u32 X[8]; // `X = x*Z`
-	u32 Y[8]; // `Y = y*Z`
-	u32 T[8]; // `T = x*y*Z`
-	u32 Z[8];
-} ed_xyzt;
+	bn X; // `X = x*Z`
+	bn Y; // `Y = y*Z`
+	bn T; // `T = x*y*Z`
+	bn Z;
+} xyzt;
 
 typedef struct {
-	u32 A[8]; // `A = Y - X`
-	u32 B[8]; // `B = Y + X`
-	u32 C[8]; // `C = (2*D) * X * Y`
-} ed_xy2d;
+	bn A; // `A = Y - X`
+	bn B; // `B = Y + X`
+	bn C; // `C = (2*D) * X * Y`
+} xy2d;
 
-// Edwards curve in Montgomery space
-// `(A*X^2 + Y^2)*Z^2 = Z^4 + D*(XY)^2`
-// assume that `A = -1`
-typedef struct {
-	monty_ctx Mo;
-	ed_xyzt G; // generator point
-	u32 _2D[8]; // `_2D = 2 * D`
-} ed_ctx;
+void ed_norm256(xyzt R[256], const xyzt P[256]);
 
-// init Ed25519 curve in Montgomery space
-void ed_init25519(ed_ctx* Ed);
+void ed_comb16_gen(xy2d R[16][65536]);
 
-// `R[i] = P[i] / P[i].Z` in Montgomery space
-void ed_norm256(
-	ed_xyzt R[256],
-	const ed_xyzt P[256],
-	const ed_ctx* Ed
-);
-
-// `R = P + Q` in Montgomery space
-void ed_add_xyzt(
-	ed_xyzt* R,
-	const ed_xyzt* P,
-	const ed_xyzt* Q,
-	const ed_ctx* Ed
-);
-
-// `R = P + Q` in Montgomery space
-void ed_add_xy2d(
-	ed_xyzt* R,
-	const ed_xyzt* P,
-	const ed_xy2d* Q,
-	const ed_ctx* Ed
-);
-
-// precompute 16-bit combs of `Ed->G`
-void ed_precomp16(
-	ed_xy2d R[16][65536],
-	const ed_ctx* Ed
-);
-
-// `R = X * P` in Montgomery space
-// uses combs from `ed_precomp16`
-void ed_mul(
-	ed_xyzt* R, const u32 X[8],
-	const ed_xy2d P[16][65536],
-	const ed_ctx* Ed
+void ed_scalarmul(
+	xyzt* R, const bn X,
+	const xy2d P[16][65536]
 );
 
 /////////////////////////////////////////////////
-
-// add `1` bit and length to block `R`
-void sha512_pad(u8 R[128], u32 n);
 
 // `SHA-512(X)`, assumes `n < 112`
 void sha512(u64 R[8], const u8 X[], u32 n);

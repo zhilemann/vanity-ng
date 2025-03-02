@@ -1,5 +1,7 @@
 #include "core.h"
-#include "const.h"
+#include "sha2.h"
+
+/////////////////////////////////////////////////
 
 static void sha512_sched(u64 W[8], u32 i) {
 	u64 s0 = u64_ror(W[i-15], 1);
