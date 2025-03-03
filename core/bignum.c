@@ -1,50 +1,33 @@
 #include "core.h"
 
-typedef struct {
-	u32 X[8], A[8], B[8];
-	u32 extA, extB;
-} bn_gcd;
-
-u32 u32_rol(u32 x, u32 n) {
-	return (x << n) | (x >> (32-n));
-}
-
-u32 u32_ror(u32 x, u32 n) {
-	return (x >> n) | (x << (32-n));
-}
-
-u64 u64_rol(u64 x, u32 n) {
-	return (x << n) | (x >> (64-n));
-}
-
-u64 u64_ror(u64 x, u32 n) {
-	return (x >> n) | (x << (64-n));
-}
-
 u32 u32_bswap(u32 x) {
 	const u32 A = 0xff00ff00;
-	x = (x << 8) & A | (x >> 8) & ~A;
-    return (x << 16) | (x >> 16);
+	x = (x<<8) & A | (x>>8) & ~A;
+	return x<<16 | x>>16;
 }
 
 u64 u64_bswap(u64 x) {
 	const u64 A = 0xff00ff00ff00ff00;
 	const u64 B = 0xffff0000ffff0000;
 
-	x = ((x << 8) & A) | ((x >> 8) & ~A);
-	x = ((x << 16) & B) | ((x >> 16) & ~B);
+	x = (x<<8) & A | (x>>8) & ~A;
+	x = (x<<16) & B | (x>>16) & ~B;
 
-    return (x << 32) | (x >> 32);
+	return (x<<32) | (x>>32);
 }
 
 void bn_zero(bn R) {
-	for (u32 i = 0; i < 8; i++)
-		R[i] = 0;
+	for (u32 i = 0; i < 8; i++) { R[i] = 0; }
 }
 
 void bn_copy(bn R, const bn X) {
 	for (u32 i = 0; i < 8; i++)
 		R[i] = X[i];
+}
+
+static void bn_neg(bn R) {
+	for (u32 i = 0; i < 8; i++)
+		R[i] = ~R[i];
 }
 
 void bn_bswap(bn R, const bn X) {
@@ -57,33 +40,22 @@ void bn_bswap(bn R, const bn X) {
 	}
 }
 
-// `(retval ...R) = -(extX ...X)`
-static u32 bn_neg(bn R, const bn X, u32 extX) {
-	u64 xx = 1;
-	for (u32 i = 0; i < 8; i++) {
-		xx += ~X[i];
-		R[i] = xx; xx >>= 32;
-	}
-
-	return xx;
-}
-
 static u32 bn_width(const bn X) {
 	u32 n = 7;
-	while (X[n] == 0) { n--; }
+	while (X[n] == 0) n--;
 	return n;
 }
 
 static u64 bn_get64(const bn X, u32 i) {
-	u64 x = X[i];
-	if (i < 7) { x |= (u64)X[i+1] << 32; }
-	return x;
+	u64 t = X[i];
+	if (i < 7) { t |= (u64)X[i+1] << 32; }
+	return t;
 }
 
 u32 bn_is_zero(const bn X) {
-	u32 x = 0;
-	for (u32 i = 0; i < 8; i++) { x |= X[i]; }
-	return x == 0;
+	u32 t = 0;
+	for (u32 i = 0; i < 8; i++) { t |= X[i]; }
+	return t == 0;
 }
 
 ord bn_cmp(const bn X, const bn Y) {
@@ -109,68 +81,65 @@ static void bn_shr1(bn R, const bn X, u32 ext) {
 	R[7] = (X[7] >> 1) | (ext << 31);
 }
 
-// `R = X >> (32*n)`
 static void bn_shl32n(u32 R[8], const u32 X[8], u32 n) {
 	for (u32 i = 7; i+1 > n; i--) { R[i] = X[i-n]; }
-	for (u32 i = 0;   i < n; i++) { R[i] = 0; }
+	for (u32 i = 0; i < n; i++) { R[i] = 0; }
 }
 
-u32 bn_add32(bn R, u32 x) {
-	u64 xx = x;
+u32 bn_add32(bn R, const bn X, u32 y) {
+	u64 t = y;
 	for (u32 i = 0; i < 8; i++) {
-		xx += R[i];
-		R[i] = xx; xx >>= 32;
+		t += X[i];
+		R[i] = t; t >>= 32;
 	}
 
-	return xx;
+	return t;
 }
 
 u32 bn_add(bn R, const bn X, const bn Y) {
-	u64 xx = 0;
+	u64 t = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx += X[i] + (u64)Y[i];
-		R[i] = xx; xx >>= 32;
+		t += X[i] + (u64)Y[i];
+		R[i] = t; t >>= 32;
 	}
 
-	return xx;
+	return t;
 }
 
 u32 bn_sub(bn R, const bn X, const bn Y) {
-	i64 xx = 0;
+	i64 t = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx += X[i] - (i64)Y[i];
-		R[i] = xx; xx >>= 32;
+		t += X[i] - (i64)Y[i];
+		R[i] = t; t >>= 32;
 	}
 
-	return xx;
+	return t;
 }
 
 void bn_modadd(bn R, const bn X, const bn Y, const bn M) {
-	u32 ext = bn_add(R, X, Y);
-	if (ext || bn_cmp(R, M) > LT)
+	if (bn_add(R, X, Y) || bn_cmp(R, M) > LT)
 		bn_sub(R, R, M);
 }
 
 void bn_modsub(bn R, const bn X, const bn Y, const bn M) {
-	u32 ext = bn_sub(R, X, Y);
-	if (ext) bn_add(R, R, M);
+	if (bn_sub(R, X, Y)) { bn_add(R, R, M); }
 }
 
-u32 bn_muladd(bn R, u32 a, const bn X) {
+u32 bn_muladd(bn R, const bn X, u32 a, const bn Y) {
 	u64 xx = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx += R[i] + a * (u64)X[i];
+		xx += X[i] + a * (u64)Y[i];
 		R[i] = xx; xx >>= 32;
 	}
 
 	return xx;
 }
 
-static u32 bn_mulsub(bn R, u32 a, const bn X) {
+static u32 bn_mulsub(bn R, const bn X, u32 a, const bn Y) {
 	i64 xx = 0, yy = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx = xx + (u64)R[i];
-		yy = xx - a * (u64)X[i];
+		xx = xx + (u64)X[i];
+		yy = xx - a * (u64)Y[i];
 
 		R[i] = yy;
 
@@ -181,28 +150,14 @@ static u32 bn_mulsub(bn R, u32 a, const bn X) {
 	return xx;
 }
 
-void bn_mulw(u32 R[16], const bn X, const bn Y) {
+void bn_mul512(bn_2 R, const bn X, const bn Y) {
 	bn_zero(R); bn_zero(R+8);
 	for (u32 i = 0; i < 8; i++)
-		R[i+8] += bn_muladd(R+i, X[i], Y);
+		R[i+8] += bn_muladd(R+i, R+i, X[i], Y);
 }
 
-/*
-void u256_pow32(u32 R[8], const u32 X[8], u32 k) {
-	u32 X1[16], T[16] = {1};
-	bn_copy(X1, X);
-
-	while (k > 0) {
-		if (k & 1) { u256_mul(T, T, X1); }
-		u256_mul(X1, X1, X1); k >>= 1;
-	}
-
-	bn_copy(R, T);
-}
-*/
-
-void bn_divmod(bn Rq, bn Rr, const bn X, const bn Y) {
-	bn_zero(Rq); bn_copy(Rr, X);
+void bn_divmod(bn Q, bn R, const bn X, const bn Y) {
+	bn_zero(Q); bn_copy(R, X);
 	if (bn_cmp(X, Y) == LT) return;
 
 	bn Y1;
@@ -211,79 +166,59 @@ void bn_divmod(bn Rq, bn Rr, const bn X, const bn Y) {
 
 	for (u32 i = n; i+1 > m; i--) {
 		bn_shl32n(Y1, Y, i - m);
-
-		while (bn_cmp(Rr, Y1) > LT) {
+		while (bn_cmp(R, Y1) > LT) {
 			// guess the quotient digit
 			// see Handbook of Applied Cryptography, 14.20
-			u32 k = bn_get64(Rr, i) / (1 + (u64)Y[m]);
+			u64 k = bn_get64(R, i) / (1 + (u64)Y[m]);
 
 			if (k > 0) {
-				Rq[i-m] += k;
-				bn_mulsub(Rr, k, Y1);
+				Q[i-m] += k;
+				bn_mulsub(R, R, k, Y1);
 			} else {
-				Rq[i-m] += 1;
-				bn_sub(Rr, Rr, Y1);
+				Q[i-m] += 1;
+				bn_sub(R, R, Y1);
 			}
 		}
 	}
 }
 
-static void bn_gcd_step(bn_gcd* A, const bn X, const bn Y) {
-	while (!(A->X[0] & 1)) {
-		bn_shr1(A->X, A->X, 0);
+static void bn_modinv_step(bn_1 A, bn X, const bn M) {
+	while (!(X[0] & 1)) {
+		bn_shr1(X, X, 0);
+		if (A[0] & 1) { A[8] += bn_add(A, A, M); }
 
-		if ((A->A[0] | A->B[0]) & 1) {
-			A->extA += bn_add(A->A, A->A, Y);
-			A->extB += bn_sub(A->B, A->B, X);
-		}
-
-		bn_shr1(A->A, A->A, A->extA);
-		A->extA = (int)A->extA >> 1;
-
-		bn_shr1(A->B, A->B, A->extB);
-		A->extB = (int)A->extB >> 1;
+		bn_shr1(A, A, A[8]);
+		A[8] = (int)A[8] >> 1;
 	}
-}
-
-static void bn_gcd_swap(bn_gcd* A, bn_gcd* B) {
-	if (bn_cmp(A->X, B->X) == LT) {
-		bn_gcd* tmp = A;
-		A = B; B = tmp;
-	}
-
-	bn_sub(A->X, A->X, B->X);
-
-	A->extA -= B->extA;
-	A->extA += bn_sub(A->A, A->A, B->A);
-
-	A->extB -= B->extB;
-	A->extB += bn_sub(A->B, A->B, B->B);
 }
 
 void bn_modinv(bn R, const bn X, const bn M) {
 	// see Handbook of Applied Cryptography, 14.61
-	bn_gcd P = { {}, { 1 }, {} };
-	bn_gcd Q = { {}, {}, { 1 } };
+	bn X_, Y; bn_copy(X_, X); bn_copy(Y, M);
+	bn_1 A = { 1 }, B = {};
 
-	bn_copy(P.X, X);
-	bn_copy(Q.X, M);
+	while (!bn_is_zero(X_)) {
+		bn_modinv_step(A, X_, M);
+		bn_modinv_step(B, Y, M);
 
-	while (!bn_is_zero(P.X)) {
-		bn_gcd_step(&P, X, M);
-		bn_gcd_step(&Q, X, M);
-		bn_gcd_swap(&P, &Q);
+		if (bn_cmp(X_, Y) > LT) {
+			bn_sub(X_, X_, Y);
+			A[8] += bn_sub(A, A, B) - B[8];
+		} else {
+			bn_sub(Y, Y, X_);
+			B[8] += bn_sub(B, B, A) - A[8];
+		}
 	}
 
-	u32 T[8]; bn_copy(T, Q.A);
-	u32 ext = Q.extA;
+	u32 neg = (int)B[8] < 0;
+	if (neg) {
+		bn_neg(B); B[8] = ~B[8];
+		B[8] += bn_add32(B, B, 1);
+	};
 
-	u32 neg = (int)ext < 0;
-	if (neg) ext = bn_neg(T, T, ext);
+	while (B[8] > 0 || bn_cmp(B, M) > LT)
+		B[8] += bn_sub(B, B, M);
 
-	while (ext > 0 || bn_cmp(T, M) > LT)
-		ext += bn_sub(T, T, M);
-
-	if (neg) { bn_sub(T, M, T); }
-
-	bn_copy(R, T);
+	if (neg) bn_sub(B, M, B);
+	bn_copy(R, B);
 }
