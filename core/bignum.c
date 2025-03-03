@@ -81,9 +81,11 @@ static void bn_shr1(bn R, const bn X, u32 ext) {
 	R[7] = (X[7] >> 1) | (ext << 31);
 }
 
-static void bn_shl32n(u32 R[8], const u32 X[8], u32 n) {
-	for (u32 i = 7; i+1 > n; i--) { R[i] = X[i-n]; }
-	for (u32 i = 0; i < n; i++) { R[i] = 0; }
+static void bn_shl32n(bn R, const bn X, u32 n) {
+	for (u32 i = 7; i+1 > n; i--)
+		R[i] = X[i-n];
+
+	for (u32 i = 0; i < n; i++) R[i] = 0;
 }
 
 u32 bn_add32(bn R, const bn X, u32 y) {

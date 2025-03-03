@@ -16,12 +16,12 @@ const xyzt ED25519_G = {
 	{ 1 }
 };
 
-static const bn ED25519_M = {
+const bn ED25519_M = {
 	0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff,
 	0xffffffff, 0xffffffff, 0xffffffff, 0x7fffffff,
 };
 
-static const bn ED25519_2D = {
+const bn ED25519_2D = {
 	0x26b2f159, 0xebd69b94, 0x8283b156, 0x00e0149a,
 	0xeef3d130, 0x198e80f2, 0x56dffce7, 0x2406d9dc,
 };
@@ -92,8 +92,8 @@ void ed_norm256(xyzt R[256], const xyzt P[256]) {
 
 static void ed_add(
 	xyzt* R,
-	const u32 A[8], const u32 B[8],
-	const u32 C[8], const u32 D[8]
+	const bn A, const bn B,
+	const bn C, const bn D
 ) {
 	bn E, F, G, H;
 
@@ -203,8 +203,7 @@ void ed_privkey(u32 R[8], const u8 K[32]) {
 		B[i] = K[i];
 
 	u64 H[8]; sha512(H, B, 32);
-	for (u32 i = 0; i < 4; i++)
-		U64(R)[i] = u64_bswap(H[i]);
+	bn_copy(R, U32(H));
 
 	U8(R)[0] &= 0xf8;
 	U8(R)[31] &= 0x7f;
