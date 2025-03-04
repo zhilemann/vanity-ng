@@ -16,134 +16,134 @@ u64 u64_bswap(u64 x) {
 	return (x<<32) | (x>>32);
 }
 
-void bn_zero(bn R) {
-	for (u32 i = 0; i < 8; i++) { R[i] = 0; }
+void bn_zero(bn_mut* R) {
+	for (u32 i = 0; i < 8; i++)
+		R->d[i] = 0;
 }
 
-void bn_copy(bn R, const bn X) {
+static void bn_neg(bn_mut* R) {
 	for (u32 i = 0; i < 8; i++)
-		R[i] = X[i];
+		R->d[i] = ~R->d[i];
 }
 
-static void bn_neg(bn R) {
+void bn_bswap(bn_mut* R, bn X) {
 	for (u32 i = 0; i < 8; i++)
-		R[i] = ~R[i];
-}
-
-void bn_bswap(bn R, const bn X) {
-	for (u32 i = 0; i < 8; i++)
-		R[i] = u32_bswap(X[i]);
+		R->d[i] = u32_bswap(X->d[i]);
 
 	for (u32 i = 0; i < 4; i++) {
-		u32 t = R[i];
-		R[i] = R[7-i], R[7-i] = t;
+		u32 t = R->d[i];
+		R->d[i] = R->d[7-i];
+		R->d[7-i] = t;
 	}
 }
 
-static u32 bn_width(const bn X) {
+static u32 bn_width(bn X) {
 	u32 n = 7;
-	while (X[n] == 0) n--;
+	while (X->d[n] == 0) n--;
 	return n;
 }
 
-static u64 bn_get64(const bn X, u32 i) {
-	u64 t = X[i];
-	if (i < 7) { t |= (u64)X[i+1] << 32; }
-	return t;
+static u64 bn_get64(bn X, u32 i) {
+	u32 l = X->d[i], h = 0;
+	if (i < 7) h = X->d[i+1];
+	return (u64)h << 32 | l;
 }
 
-u32 bn_is_zero(const bn X) {
+u32 bn_is_zero(bn X) {
 	u32 t = 0;
-	for (u32 i = 0; i < 8; i++) { t |= X[i]; }
+	for (u32 i = 0; i < 8; i++)
+		t |= X->d[i];
+
 	return t == 0;
 }
 
-ord bn_cmp(const bn X, const bn Y) {
+ord bn_cmp(bn X, bn Y) {
 	u32 lt = 0, gt = 0;
 	for (u32 i = 0; i < 8; i++) {
-		if (X[i] < Y[i]) { lt |= (1 << i); }
-		if (X[i] > Y[i]) { gt |= (1 << i); }
+		u32 x = X->d[i], y = Y->d[i];
+		if (x < y) lt |= 1 << i;
+		if (x > y) gt |= 1 << i;
 	}
 
-	if (lt > gt)
-		return LT;
-	else if (lt < gt)
-		return GT;
-	else
-		return EQ;
+	if (lt > gt) return LT;
+	if (lt < gt) return GT;
+	return EQ;
 }
 
 
-static void bn_shr1(bn R, const bn X, u32 ext) {
-	for (u32 i = 0; i < 7; i++)
-		R[i] = (X[i] >> 1) | (X[i+1] << 31);
+static void bn_shr1(bn_mut* R, bn X, u32 ext) {
+	for (u32 i = 0; i < 7; i++) {
+		R->d[i] = X->d[i] >> 1;
+		R->d[i] |= X->d[i+1] << 31;
+	}
 
-	R[7] = (X[7] >> 1) | (ext << 31);
+	R->d[7] = X->d[7] >> 1 | ext << 31;
 }
 
-static void bn_shl32n(bn R, const bn X, u32 n) {
+static void bn_shl32n(bn_mut* R, bn X, u32 n) {
 	for (u32 i = 7; i+1 > n; i--)
-		R[i] = X[i-n];
+		R->d[i] = X->d[i-n];
 
-	for (u32 i = 0; i < n; i++) R[i] = 0;
+	for (u32 i = 0; i < n; i++)
+		R->d[i] = 0;
 }
 
-u32 bn_add32(bn R, const bn X, u32 y) {
+u32 bn_add32(bn_mut* R, bn X, u32 y) {
 	u64 t = y;
 	for (u32 i = 0; i < 8; i++) {
-		t += X[i];
-		R[i] = t; t >>= 32;
+		t += X->d[i];
+		R->d[i] = t, t >>= 32;
 	}
 
 	return t;
 }
 
-u32 bn_add(bn R, const bn X, const bn Y) {
+u32 bn_add(bn_mut* R, bn X, bn Y) {
 	u64 t = 0;
 	for (u32 i = 0; i < 8; i++) {
-		t += X[i] + (u64)Y[i];
-		R[i] = t; t >>= 32;
+		t += X->d[i] + (u64)Y->d[i];
+		R->d[i] = t, t >>= 32;
 	}
 
 	return t;
 }
 
-u32 bn_sub(bn R, const bn X, const bn Y) {
+u32 bn_sub(bn_mut* R, bn X, bn Y) {
 	i64 t = 0;
 	for (u32 i = 0; i < 8; i++) {
-		t += X[i] - (i64)Y[i];
-		R[i] = t; t >>= 32;
+		t += X->d[i] - (i64)Y->d[i];
+		R->d[i] = t, t >>= 32;
 	}
 
 	return t;
 }
 
-void bn_modadd(bn R, const bn X, const bn Y, const bn M) {
+void bn_modadd(bn_mut* R, bn X, bn Y, bn M) {
 	if (bn_add(R, X, Y) || bn_cmp(R, M) > LT)
 		bn_sub(R, R, M);
 }
 
-void bn_modsub(bn R, const bn X, const bn Y, const bn M) {
-	if (bn_sub(R, X, Y)) { bn_add(R, R, M); }
+void bn_modsub(bn_mut* R, bn X, bn Y, bn M) {
+	if (bn_sub(R, X, Y)) bn_add(R, R, M);
 }
 
-u32 bn_muladd(bn R, const bn X, u32 a, const bn Y) {
+u32 bn_muladd(bn_mut* R, bn X, u32 a, bn Y) {
 	u64 xx = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx += X[i] + a * (u64)Y[i];
-		R[i] = xx; xx >>= 32;
+		xx += X->d[i] + a * (u64)Y->d[i];
+		R->d[i] = xx, xx >>= 32;
 	}
 
 	return xx;
 }
 
-static u32 bn_mulsub(bn R, const bn X, u32 a, const bn Y) {
+static u32 bn_mulsub(bn_mut* R, bn X, u32 a, bn Y) {
 	i64 xx = 0, yy = 0;
 	for (u32 i = 0; i < 8; i++) {
-		xx = xx + (u64)X[i];
-		yy = xx - a * (u64)Y[i];
+		xx = xx + (u64)X->d[i];
+		yy = xx - a * (u64)Y->d[i];
 
-		R[i] = yy;
+		R->d[i] = yy;
 
 		u64 bf = yy > xx ? -1 : 0;
 		xx = (yy >> 32) | (bf << 32);
@@ -152,75 +152,78 @@ static u32 bn_mulsub(bn R, const bn X, u32 a, const bn Y) {
 	return xx;
 }
 
-void bn_mul512(bn_2 R, const bn X, const bn Y) {
-	bn_zero(R); bn_zero(R+8);
-	for (u32 i = 0; i < 8; i++)
-		R[i+8] += bn_muladd(R+i, R+i, X[i], Y);
+void bn_mul512(bn2_mut* R, bn X, bn Y) {
+	bn_zero(&R->l); bn_zero(&R->h);
+	for (u32 i = 0; i < 8; i++) {
+		bn_mut* r = (bn_mut*)&R->d[i];
+		r->d[8] += bn_muladd(r, r, X->d[i], Y);
+	}
 }
 
-void bn_divmod(bn Q, bn R, const bn X, const bn Y) {
-	bn_zero(Q); bn_copy(R, X);
+void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
+	bn_zero(Q); *R = *X;
 	if (bn_cmp(X, Y) == LT) return;
 
-	bn Y1;
+	bn_mut Y1;
 	u32 n = bn_width(X);
 	u32 m = bn_width(Y);
 
 	for (u32 i = n; i+1 > m; i--) {
-		bn_shl32n(Y1, Y, i - m);
-		while (bn_cmp(R, Y1) > LT) {
+		bn_shl32n(&Y1, Y, i - m);
+		while (bn_cmp(R, &Y1) > LT) {
 			// guess the quotient digit
 			// see Handbook of Applied Cryptography, 14.20
-			u64 k = bn_get64(R, i) / (1 + (u64)Y[m]);
+			u64 k = bn_get64(R, i) / (1 + (u64)Y->d[m]);
 
 			if (k > 0) {
-				Q[i-m] += k;
-				bn_mulsub(R, R, k, Y1);
+				Q->d[i-m] += k;
+				bn_mulsub(R, R, k, &Y1);
 			} else {
-				Q[i-m] += 1;
-				bn_sub(R, R, Y1);
+				Q->d[i-m] += 1;
+				bn_sub(R, R, &Y1);
 			}
 		}
 	}
 }
 
-static void bn_modinv_step(bn_1 A, bn X, const bn M) {
-	while (!(X[0] & 1)) {
+static void bn_modinv_step(bn1_mut* A, bn_mut* X, bn M) {
+	while (!(X->d[0] & 1)) {
 		bn_shr1(X, X, 0);
-		if (A[0] & 1) { A[8] += bn_add(A, A, M); }
+		if (A->d[0] & 1)
+			A->h += bn_add(&A->l, &A->l, M);
 
-		bn_shr1(A, A, A[8]);
-		A[8] = (int)A[8] >> 1;
+		bn_shr1(&A->l, &A->l, A->h);
+		A->h = (int)A->h >> 1;
 	}
 }
 
-void bn_modinv(bn R, const bn X, const bn M) {
+void bn_modinv(bn_mut* R, bn X, bn M) {
 	// see Handbook of Applied Cryptography, 14.61
-	bn X_, Y; bn_copy(X_, X); bn_copy(Y, M);
-	bn_1 A = { 1 }, B = {};
+	bn_mut X_ = *X, Y = *M;
+	bn1_mut A = { 1 }, B = {};
 
-	while (!bn_is_zero(X_)) {
-		bn_modinv_step(A, X_, M);
-		bn_modinv_step(B, Y, M);
+	while (!bn_is_zero(&X_)) {
+		bn_modinv_step(&A, &X_, M);
+		bn_modinv_step(&B, &Y, M);
 
-		if (bn_cmp(X_, Y) > LT) {
-			bn_sub(X_, X_, Y);
-			A[8] += bn_sub(A, A, B) - B[8];
+		if (bn_cmp(&X_, &Y) > LT) {
+			bn_sub(&X_, &X_, &Y);
+			A.h += bn_sub(&A.l, &A.l, &B.l) - B.h;
 		} else {
-			bn_sub(Y, Y, X_);
-			B[8] += bn_sub(B, B, A) - A[8];
+			bn_sub(&Y, &Y, &X_);
+			B.h += bn_sub(&B.l, &B.l, &A.l) - A.h;
 		}
 	}
 
-	u32 neg = (int)B[8] < 0;
+	u32 neg = (int)B.h < 0;
 	if (neg) {
-		bn_neg(B); B[8] = ~B[8];
-		B[8] += bn_add32(B, B, 1);
+		bn_neg(&B.l), B.h = ~B.h;
+		B.h += bn_add32(&B.l, &B.l, 1);
 	};
 
-	while (B[8] > 0 || bn_cmp(B, M) > LT)
-		B[8] += bn_sub(B, B, M);
+	while (B.h > 0 || bn_cmp(&B.l, M) > LT)
+		B.h += bn_sub(&B.l, &B.l, M);
 
-	if (neg) bn_sub(B, M, B);
-	bn_copy(R, B);
+	if (neg) bn_sub(&B.l, M, &B.l);
+	*R = B.l;
 }

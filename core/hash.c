@@ -4,7 +4,7 @@
 #define MAJ(x, y, z) ((x & y) ^ (x & z) ^ (y & z))
 #define CH(x, y, z) ((x & y) ^ (~x & z))
 
-static void sha512_sched(u64 W[80], u32 i) {
+static void sha512_sched(u64* W, u32 i) {
 	u64 s0 = ROR(W[i-15], 1);
 	s0 ^= ROR(W[i-15], 8) ^ (W[i-15] >> 7);
 
@@ -14,7 +14,7 @@ static void sha512_sched(u64 W[80], u32 i) {
 	W[i] = W[i-16] + s0 + W[i-7] + s1;
 }
 
-static void sha512_round(u64 X[8], const u64 W[80], u32 i) {
+static void sha512_round(u64* X, const u64* W, u32 i) {
 	u64 S0 = ROR(X[0], 28) ^ ROR(X[0], 34) ^ ROR(X[0], 39);
 	u64 maj = MAJ(X[0], X[1], X[2]);
 
@@ -29,7 +29,7 @@ static void sha512_round(u64 X[8], const u64 W[80], u32 i) {
 	X[0] = t + S0 + maj; X[4] += t;
 }
 
-void sha512(u64 R[8], const u8 X[], u32 n) {
+void sha512(u64* R, const u8* X, u32 n) {
 	u64 W[80] = {};
 	for (u32 i = 0; i < n; i++)
 		U8(W)[i] = X[i];

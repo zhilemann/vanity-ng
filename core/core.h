@@ -10,9 +10,23 @@ typedef unsigned long long u64;
 #define U32(x) ((u32*)x)
 #define U64(x) ((u64*)x)
 
-typedef u32 bn[8];
-typedef u32 bn_1[9];
-typedef u32 bn_2[16];
+#if !defined(__OPENCL_C_VERSION__)
+	#define global
+#endif
+
+// fuck OpenCL :(
+typedef struct { u32 d[8]; } bn_mut;
+typedef const bn_mut* bn;
+
+typedef union {
+	u32 d[9];
+	struct { bn_mut l; u32 h; };
+} bn1_mut;
+
+typedef union {
+	u32 d[16];
+	struct { bn_mut l, h; };
+} bn2_mut;
 
 typedef enum { LT, EQ, GT } ord;
 
@@ -23,62 +37,61 @@ typedef enum { LT, EQ, GT } ord;
 u32 u32_bswap(u32 x);
 u64 u64_bswap(u64 x);
 
-void bn_zero(bn R);
-void bn_copy(bn R, const bn X);
-void bn_bswap(bn R, const bn X);
+void bn_zero(bn_mut* R);
+void bn_bswap(bn_mut* R, bn X);
 
-u32 bn_is_zero(const bn X);
-ord bn_cmp(const bn X, const bn Y);
+u32 bn_is_zero(bn X);
+ord bn_cmp(bn X, bn Y);
 
-u32 bn_add32(bn R, const bn X, u32 y);
-u32 bn_add(bn R, const bn X, const bn Y);
-u32 bn_sub(bn R, const bn X, const bn Y);
+u32 bn_add32(bn_mut* R, bn X, u32 y);
+u32 bn_add(bn_mut* R, bn X, bn Y);
+u32 bn_sub(bn_mut* R, bn X, bn Y);
 
-void bn_modadd(bn R, const bn X, const bn Y, const bn M);
-void bn_modsub(bn R, const bn X, const bn Y, const bn M);
+void bn_modadd(bn_mut* R, bn X, bn Y, bn M);
+void bn_modsub(bn_mut* R, bn X, bn Y, bn M);
 
-u32 bn_muladd(bn R, const bn X, u32 a, const bn Y);
-void bn_mul512(bn_2 R, const bn X, const bn Y);
+u32 bn_muladd(bn_mut* R, bn X, u32 a, bn Y);
+void bn_mul512(bn2_mut* R, bn X, bn Y);
 
-void bn_divmod(bn Q, bn R, const bn X, const bn Y);
-void bn_modinv(bn R, const bn X, const bn M);
+void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y);
+void bn_modinv(bn_mut* R, bn X, bn M);
 
 /////////////////////////////////////////////////
 
 typedef struct {
-	bn X; // `X = x*Z`
-	bn Y; // `Y = y*Z`
-	bn T; // `T = x*y*Z`
-	bn Z;
+	bn_mut X; // `X = x*Z`
+	bn_mut Y; // `Y = y*Z`
+	bn_mut T; // `T = x*y*Z`
+	bn_mut Z;
 } xyzt;
 
 typedef struct {
-	bn A; // `A = Y - X`
-	bn B; // `B = Y + X`
-	bn C; // `C = (2*D) * X * Y`
+	bn_mut A; // `A = Y - X`
+	bn_mut B; // `B = Y + X`
+	bn_mut C; // `C = (2*D) * X * Y`
 } xy2d;
 
-extern const xyzt ED25519_G;
-typedef xy2d ed_comb[16][65536];
+extern const global xyzt ED25519_G;
+typedef struct { xy2d p[16][65536]; } ed_comb;
 
-void ed_norm256(xyzt R[256], const xyzt P[256]);
-void ed_comb16(ed_comb R, const xyzt* G);
+void ed_norm256(xyzt* R, const xyzt* P);
+void ed_comb16(ed_comb* R, const xyzt* G);
 
-void ed_privkey(bn R, const u8 K[32]);
-void ed_mul(xyzt* R, const bn X, const ed_comb P);
-void ed_pubkey(bn R, const xyzt* P);
+void ed_privkey(bn_mut* R, const u8* K);
+void ed_mul(xyzt* R, bn X, const ed_comb* P);
+void ed_pubkey(bn_mut* R, const xyzt* P);
 
 /////////////////////////////////////////////////
 
 // `SHA-512(X)`, assumes `n < 112`
-void sha512(u64 R[8], const u8 X[], u32 n);
+void sha512(u64* R, const u8* X, u32 n);
 
 // `K = A + B * i;`
-typedef struct { u32 A[8], B[8]; } vanity_rnd;
+typedef struct { bn_mut A, B; } vanity_rnd;
 
 typedef struct {
-	u32 P_lo[8], P_hi[8]; // `P_lo <= X < P_hi`
-	u32 S_m[8], S_eq[8]; // `X ~= S_eq` (mod S_m)
+	bn_mut P_lo, P_hi; // `P_lo <= X < P_hi`
+	bn_mut S_m, S_eq; // `X ~= S_eq` (mod S_m)
 } vanity_tgt;
 
 #endif
