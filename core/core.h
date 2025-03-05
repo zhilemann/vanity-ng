@@ -34,13 +34,12 @@ typedef enum { LT, EQ, GT } ord;
 #define ROL(x, n) (x<<n | x>>(__WIDTH(x)-n))
 #define ROR(x, n) (x>>n | x<<(__WIDTH(x)-n))
 
+static const bn_mut BN_0 = {};
+
 u32 u32_bswap(u32 x);
 u64 u64_bswap(u64 x);
-
-void bn_zero(bn_mut* R);
 void bn_bswap(bn_mut* R, bn X);
 
-u32 bn_is_zero(bn X);
 ord bn_cmp(bn X, bn Y);
 
 u32 bn_add32(bn_mut* R, bn X, u32 y);
@@ -59,26 +58,32 @@ void bn_modinv(bn_mut* R, bn X, bn M);
 /////////////////////////////////////////////////
 
 typedef struct {
-	bn_mut X; // `X = x*Z`
-	bn_mut Y; // `Y = y*Z`
-	bn_mut T; // `T = x*y*Z`
-	bn_mut Z;
+	bn_mut x; // `X = x*Z`
+	bn_mut y; // `Y = y*Z`
+	bn_mut t; // `T = x*y*Z`
+	bn_mut z;
 } xyzt;
 
 typedef struct {
-	bn_mut A; // `A = Y - X`
-	bn_mut B; // `B = Y + X`
-	bn_mut C; // `C = (2*D) * X * Y`
+	bn_mut a; // `A = Y - X`
+	bn_mut b; // `B = Y + X`
+	bn_mut c; // `C = (2*D) * X * Y`
 } xy2d;
 
-extern const global xyzt ED25519_G;
-typedef struct { xy2d p[16][65536]; } ed_comb;
+typedef struct {
+	// `8*21 + 4*22` = 256
+	xy2d a[8][1<<21], b[4][1<<22];
+} ed_lut;
 
-void ed_norm256(xyzt* R, const xyzt* P);
-void ed_comb16(ed_comb* R, const xyzt* G);
+extern const xyzt ED_ID;
+extern const global xyzt ED_G;
+
+// uses `.t` and `.z` as scratch
+void ed_normN(xyzt* R, const xyzt* P, u32 n);
+void ed_lut_step(xy2d* R, xyzt* G, u32 w);
+void ed_mul(xyzt* R, bn X, const ed_lut* L);
 
 void ed_privkey(bn_mut* R, const u8* K);
-void ed_mul(xyzt* R, bn X, const ed_comb* P);
 void ed_pubkey(bn_mut* R, const xyzt* P);
 
 /////////////////////////////////////////////////
@@ -86,12 +91,16 @@ void ed_pubkey(bn_mut* R, const xyzt* P);
 // `SHA-512(X)`, assumes `n < 112`
 void sha512(u64* R, const u8* X, u32 n);
 
+typedef struct {
+	u32 f; bn_mut S, K;
+} vanity_res;
+
 // `K = A + B * i;`
-typedef struct { bn_mut A, B; } vanity_rnd;
+typedef struct { bn_mut A, B; } vanity_seed;
 
 typedef struct {
-	bn_mut P_lo, P_hi; // `P_lo <= X < P_hi`
-	bn_mut S_m, S_eq; // `X ~= S_eq` (mod S_m)
+	bn_mut Pl, Ph; // `Pl <= X <= Ph`
+	bn_mut Sm, Sr; // `X ~= Sr` (mod Sm)
 } vanity_tgt;
 
 #endif

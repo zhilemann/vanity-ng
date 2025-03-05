@@ -3,20 +3,38 @@
 #include "core/hash.c"
 
 kernel void vanity_solana(
-	global const vanity_rnd* Rd,
+	global vanity_res* R,
+	global const vanity_seed* Sd,
 	global const vanity_tgt* Tg,
-	global const ed_comb* G
+	global const ed_lut* L
 ) {
-	u32 i = get_global_id(0);
+	const u32 N = 256;
+	if (R->f) return;
 
-	bn_mut S[256]; xyzt P[256];
-	for (u32 j = 0; j < 256; j++) {
-		S[j] = Rd->A;
-		bn_muladd(&S[j], &S[j], 256*i + j, &Rd->B);
+	u32 a = N * get_global_id(1);
+	a += N * get_global_size(1) * get_global_id(0);
+
+	bn_mut S[N]; xyzt P[N];
+	for (u32 i = 0; i < N; i++) {
+		bn_muladd(&S[i], &Sd->A, a+i, &Sd->B);
 
 		bn_mut K; ed_privkey(&K, U8(&S[i]));
-		ed_mul(&P[j], &K, G);
+		ed_mul(&P[i], &K, L);
 	}
 
-	ed_norm256(P, P);
+	ed_normN(P, P, N);
+	for (u32 i = 0; i < N; i++) {
+		bn_mut K; ed_pubkey(&K, &P[i]);
+
+		if (bn_cmp(&Tg->Pl, &K) == GT) continue;
+		if (bn_cmp(&K, &Tg->Ph) == GT) continue;
+
+		bn_mut Q, R_;
+		bn_divmod(&Q, &R_, &K, &Tg->Sm);
+
+		if (bn_cmp(&R_, &Tg->Sr) != EQ) continue;
+
+		if (atomic_inc(&R->f) == 0)
+			R->S = S[i], R->K = K;
+	}
 }
