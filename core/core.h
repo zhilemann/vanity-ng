@@ -1,6 +1,10 @@
 #if !defined(CORE_H)
 #define CORE_H
 
+#if !defined(__OPENCL_C_VERSION__)
+	#define global
+#endif
+
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef long long i64;
@@ -10,9 +14,11 @@ typedef unsigned long long u64;
 #define U32(x) ((u32*)x)
 #define U64(x) ((u64*)x)
 
-#if !defined(__OPENCL_C_VERSION__)
-	#define global
-#endif
+#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
+
+#define __WIDTH(x) (8*sizeof(x))
+#define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
+#define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
 
 // fuck OpenCL :(
 typedef struct { u32 d[8]; } bn_mut;
@@ -28,13 +34,11 @@ typedef union {
 	struct { bn_mut l, h; };
 } bn2_mut;
 
+static const bn_mut BN_0 = {};
+
 typedef enum { LT, EQ, GT } ord;
 
-#define __WIDTH(x) (8*sizeof(x))
-#define ROL(x, n) (x<<n | x>>(__WIDTH(x)-n))
-#define ROR(x, n) (x>>n | x<<(__WIDTH(x)-n))
-
-static const bn_mut BN_0 = {};
+/////////////////////////////////////////////////
 
 u32 u32_bswap(u32 x);
 u64 u64_bswap(u64 x);
@@ -88,11 +92,9 @@ void ed_pubkey(bn_mut* R, const xyzt* P);
 
 /////////////////////////////////////////////////
 
-// assumes `n < 56`
-void sha256(u32* R, const u8* X, u32 n);
-
-// assumes `n < 112`
-void sha512(u64* R, const u8* X, u32 n);
+void sha2_256(u8* R, const u8* X, u32 n);
+void sha2_512(u8* R, const u8* X, u32 n);
+void sha3_256(u8* R, const u8* X, u32 n);
 
 typedef struct {
 	u32 f; bn_mut S, K;

@@ -28,6 +28,8 @@ const global bn_mut ED_2D = {
 	0xeef3d130, 0x198e80f2, 0x56dffce7, 0x2406d9dc,
 };
 
+/////////////////////////////////////////////////
+
 static void ed_shrN(bn_mut* R, bn X, u32 n) {
 	for (u32 i = 0; i < 7; i++) {
 		R->d[i] = X->d[i] >> n;
@@ -62,6 +64,28 @@ static void ed_xy2d_init(xy2d* R, const xyzt* P) {
 	ed_modmul(&R->c, &P->x, &P->y);
 	ed_modmul(&R->c, &R->c, &ED_2D);
 }
+
+void ed_normN(xyzt* R, const xyzt* P, u32 n) {
+	R[0].t = P[0].z;
+	for (u32 i = 1; i < n; i++)
+		// `R[i].T ~= P[0].Z * ... * P[i].Z`
+		ed_modmul(&R[i].t, &R[i-1].t, &P[i].z);
+
+	bn_mut I, Zi;
+	bn_modinv(&I, &R[n-1].t, &ED_M);
+
+	for (u32 i = n-1; i+1 > 1; i--) {
+		// `I * R[i-1].T * P[i].Z ~= 1`
+		ed_modmul(&Zi, &I, &R[i-1].t);
+		ed_xyzt_scale(&R[i], &Zi, &P[i]);
+
+		ed_modmul(&I, &I, &P[i].z);
+	}
+
+	ed_xyzt_scale(&R[0], &I, &P[0]);
+}
+
+/////////////////////////////////////////////////
 
 static void ed_add(
 	xyzt* R,
@@ -136,25 +160,7 @@ static void ed_add_xy2d(
 	ed_add(R, &A, &B, &C, &D);
 }
 
-void ed_normN(xyzt* R, const xyzt* P, u32 n) {
-	R[0].t = P[0].z;
-	for (u32 i = 1; i < n; i++)
-		// `R[i].T ~= P[0].Z * ... * P[i].Z`
-		ed_modmul(&R[i].t, &R[i-1].t, &P[i].z);
-
-	bn_mut I, Zi;
-	bn_modinv(&I, &R[n-1].t, &ED_M);
-
-	for (u32 i = n-1; i+1 > 1; i--) {
-		// `I * R[i-1].T * P[i].Z ~= 1`
-		ed_modmul(&Zi, &I, &R[i-1].t);
-		ed_xyzt_scale(&R[i], &Zi, &P[i]);
-
-		ed_modmul(&I, &I, &P[i].z);
-	}
-
-	ed_xyzt_scale(&R[0], &I, &P[0]);
-}
+/////////////////////////////////////////////////
 
 void ed_lut_step(xy2d* R, xyzt* G, u32 w) {
 	const u32 N = 1024;
@@ -178,7 +184,7 @@ void ed_lut_step(xy2d* R, xyzt* G, u32 w) {
 }
 
 void ed_mul(xyzt* R, bn X, const ed_lut* L) {
-	*R = ED_ID; bn_mut X_ = *X;
+	bn_mut X_ = *X; *R = ED_ID;
 
 	for (u32 i = 0; i < 8; i++) {
 		u32 j = X_.d[0] % (1<<21);
@@ -198,12 +204,9 @@ void ed_privkey(bn_mut* R, const u8* K) {
 	for (u32 i = 0; i < 32; i++)
 		B[i] = K[i];
 
-	u64 H[8]; sha512(H, B, 32);
+	u8 H[64]; sha2_512(H, B, 32);
+	H[0] &= 0xf8, H[31] &= 0x7f, H[31] |= 0x40;
 	*R = *(bn_mut*)&H;
-
-	U8(R)[0] &= 0xf8;
-	U8(R)[31] &= 0x7f;
-	U8(R)[31] |= 0x40;
 }
 
 void ed_pubkey(bn_mut* R, const xyzt* P) {

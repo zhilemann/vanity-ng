@@ -31,11 +31,8 @@ void bn_bswap(bn_mut* R, bn X) {
 	for (u32 i = 0; i < 8; i++)
 		R->d[i] = u32_bswap(X->d[i]);
 
-	for (u32 i = 0; i < 4; i++) {
-		u32 t = R->d[i];
-		R->d[i] = R->d[7-i];
-		R->d[7-i] = t;
-	}
+	for (u32 i = 0; i < 4; i++)
+		SWAP(R->d[i], R->d[7-i]);
 }
 
 static u32 bn_width(bn X) {
@@ -62,6 +59,8 @@ ord bn_cmp(bn X, bn Y) {
 	if (lt < gt) return GT;
 	return EQ;
 }
+
+/////////////////////////////////////////////////
 
 static void bn_shr1(bn_mut* R, bn X, u32 ext) {
 	for (u32 i = 0; i < 7; i++) {
@@ -119,6 +118,8 @@ void bn_modsub(bn_mut* R, bn X, bn Y, bn M) {
 	if (bn_sub(R, X, Y)) bn_add(R, R, M);
 }
 
+/////////////////////////////////////////////////
+
 u32 bn_muladd(bn_mut* R, bn X, u32 a, bn Y) {
 	u64 xx = 0;
 	for (u32 i = 0; i < 8; i++) {
@@ -153,7 +154,7 @@ void bn_mul512(bn2_mut* R, bn X, bn Y) {
 }
 
 void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
-	*Q = BN_0; *R = *X;
+	*Q = BN_0, *R = *X;
 	if (bn_cmp(X, Y) == LT) return;
 
 	bn_mut Y1;
@@ -177,6 +178,8 @@ void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
 		}
 	}
 }
+
+/////////////////////////////////////////////////
 
 static void bn_modinv_step(bn1_mut* A, bn_mut* X, bn M) {
 	while (!(X->d[0] & 1)) {
