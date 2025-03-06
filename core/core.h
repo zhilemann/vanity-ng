@@ -88,7 +88,10 @@ void ed_pubkey(bn_mut* R, const xyzt* P);
 
 /////////////////////////////////////////////////
 
-// `SHA-512(X)`, assumes `n < 112`
+// assumes `n < 56`
+void sha256(u32* R, const u8* X, u32 n);
+
+// assumes `n < 112`
 void sha512(u64* R, const u8* X, u32 n);
 
 typedef struct {

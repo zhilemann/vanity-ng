@@ -1,32 +1,82 @@
 #include "core.h"
 #include "sha2.h"
 
-#define MAJ(x, y, z) ((x & y) ^ (x & z) ^ (y & z))
-#define CH(x, y, z) ((x & y) ^ (~x & z))
+#define S1(x, a, b, c) (ROR(x,a) ^ ROR(x,b) ^ (x>>c))
+#define S2(x, a, b, c) (ROR(x,a) ^ ROR(x,b) ^ ROR(x,c))
 
-static void sha512_sched(u64* W, u32 i) {
-	u64 s0 = ROR(W[i-15], 1);
-	s0 ^= ROR(W[i-15], 8) ^ (W[i-15] >> 7);
+#define Ma(x, y, z) (x&y ^ x&z ^ y&z)
+#define Ch(x, y, z) (x&y ^ ~x&z)
 
-	u64 s1 = ROR(W[i-2], 19);
-	s1 ^= ROR(W[i-2], 61) ^ (W[i-2] >> 6);
+#define SHA2_pre(IV, t) \
+	t A = IV[0], B = IV[1]; \
+	t C = IV[2], D = IV[3]; \
+	t E = IV[4], F = IV[5]; \
+	t G = IV[6], H = IV[7];
 
-	W[i] = W[i-16] + s0 + W[i-7] + s1;
+#define SHA2_step(K, r) { \
+	r(A, B, C, &D, E, F, G, &H, K[i], W[i]); \
+	r(H, A, B, &C, D, E, F, &G, K[i+1], W[i+1]); \
+	r(G, H, A, &B, C, D, E, &F, K[i+2], W[i+2]); \
+	r(F, G, H, &A, B, C, D, &E, K[i+3], W[i+3]); \
+	r(E, F, G, &H, A, B, C, &D, K[i+4], W[i+4]); \
+	r(D, E, F, &G, H, A, B, &C, K[i+5], W[i+5]); \
+	r(C, D, E, &F, G, H, A, &B, K[i+6], W[i+6]); \
+	r(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); \
 }
 
-static void sha512_round(u64* X, const u64* W, u32 i) {
-	u64 S0 = ROR(X[0], 28) ^ ROR(X[0], 34) ^ ROR(X[0], 39);
-	u64 maj = MAJ(X[0], X[1], X[2]);
+#define SHA2_post(R, IV, s) \
+	R[0] = s(A + IV[0]), R[1] = s(B + IV[1]); \
+	R[2] = s(C + IV[2]), R[3] = s(D + IV[3]); \
+	R[4] = s(E + IV[4]), R[5] = s(F + IV[5]); \
+	R[6] = s(G + IV[6]), R[7] = s(H + IV[7]); \
 
-	u64 S1 = ROR(X[4], 14) ^ ROR(X[4], 18) ^ ROR(X[4], 41);
-	u64 ch = CH(X[4], X[5], X[6]);
+static inline void sha256_round(
+	u32 A, u32 B, u32 C, u32* D,
+	u32 E, u32 F, u32 G, u32* H,
+	u32 k, u32 w
+) {
+	u32 S0 = S2(A, 2, 13, 22), Ma = Ma(A, B, C);
+	u32 S1 = S2(E, 6, 11, 25), Ch = Ch(E, F, G);
 
-	u64 t = X[7] + S1 + ch + SHA512_K[i] + W[i];
+	u32 t = *H + S1 + Ch + k + w;
+	*D += t, *H = t + S0 + Ma;
+}
 
-	for (u32 i = 7; i+1 > 1; i--)
-		X[i] = X[i-1];
+static inline void sha512_round(
+	u64 A, u64 B, u64 C, u64* D,
+	u64 E, u64 F, u64 G, u64* H,
+	u64 k, u64 w
+) {
+	u64 S0 = S2(A, 28, 34, 39), Ma = Ma(A, B, C);
+	u64 S1 = S2(E, 14, 18, 41), Ch = Ch(E, F, G);
 
-	X[0] = t + S0 + maj; X[4] += t;
+	u64 t = *H + S1 + Ch + k + w;
+	*D += t, *H = t + S0 + Ma;
+}
+
+/////////////////////////////////////////////////
+
+void sha256(u32* R, const u8* X, u32 n) {
+	u32 W[64] = {};
+	for (u32 i = 0; i < n; i++)
+		U8(W)[i] = X[i];
+
+	U8(W)[n] = 0x80;
+
+	for (u32 i = 0; i < 14; i++)
+		W[i] = u32_bswap(W[i]);
+
+	W[14] = 0; W[15] = 8*n;
+	for (u32 i = 16; i < 64; i++) {
+		W[i] = W[i-16] + S1(W[i-15], 7, 18, 3);
+		W[i] += W[i-7] + S1(W[i-2], 17, 19, 10);
+	}
+
+	SHA2_pre(SHA256_IV, u32);
+	for (u32 i = 0; i < 64; i += 8)
+		SHA2_step(SHA256_K, sha256_round);
+
+	SHA2_post(R, SHA256_IV, u32_bswap);
 }
 
 void sha512(u64* R, const u8* X, u32 n) {
@@ -40,16 +90,14 @@ void sha512(u64* R, const u8* X, u32 n) {
 		W[i] = u64_bswap(W[i]);
 
 	W[14] = 0; W[15] = 8*n;
-	for (u32 i = 16; i < 80; i++)
-		sha512_sched(W, i);
+	for (u32 i = 16; i < 80; i++) {
+		W[i] = W[i-16] + S1(W[i-15], 1, 8, 7);
+		W[i] += W[i-7] + S1(W[i-2], 19, 61, 6);
+	}
 
-	u64 H[8];
-	for (u32 i = 0; i < 8; i++)
-		H[i] = SHA512_IV[i];
+	SHA2_pre(SHA512_IV, u64);
+	for (u32 i = 0; i < 80; i += 8)
+		SHA2_step(SHA512_K, sha512_round);
 
-	for (u32 i = 0; i < 80; i++)
-		sha512_round(H, W, i);
-
-	for (u32 i = 0; i < 8; i++)
-		R[i] = u64_bswap(H[i] + SHA512_IV[i]);
+    SHA2_post(R, SHA512_IV, u64_bswap);
 }
