@@ -14,14 +14,15 @@ typedef unsigned long long u64;
 #define U32(x) ((u32*)x)
 #define U64(x) ((u64*)x)
 
-#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
-
 #define __WIDTH(x) (8*sizeof(x))
+#define PACKED __attribute__((__packed__))
+
+#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
 #define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
 #define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
 
 // fuck OpenCL :(
-typedef struct { u32 d[8]; } bn_mut;
+typedef struct PACKED { u32 d[8]; } bn_mut;
 typedef const bn_mut* bn;
 
 typedef union {
@@ -68,13 +69,13 @@ typedef struct {
 	bn_mut z;
 } xyzt;
 
-typedef struct {
+typedef struct PACKED {
 	bn_mut a; // `A = Y - X`
 	bn_mut b; // `B = Y + X`
 	bn_mut c; // `C = (2*D) * X * Y`
 } xy2d;
 
-typedef struct {
+typedef struct PACKED {
 	// `8*21 + 4*22` = 256
 	xy2d a[8][1<<21], b[4][1<<22];
 } ed_lut;
@@ -92,9 +93,15 @@ void ed_pubkey(bn_mut* R, const xyzt* P);
 
 /////////////////////////////////////////////////
 
+typedef struct { u8 H[2], W; } bech32_cfg;
+
 void sha2_256(u8* R, const u8* X, u32 n);
 void sha2_512(u8* R, const u8* X, u32 n);
+
 void sha3_256(u8* R, const u8* X, u32 n);
+
+void ripemd160(u8* R, const u8* X, u32 n);
+void bech32(u8* R, u8* X, bech32_cfg C);
 
 typedef struct {
 	u32 f; bn_mut S, K;

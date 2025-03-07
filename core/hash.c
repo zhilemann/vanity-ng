@@ -147,3 +147,140 @@ void sha3_256(u8* R, const u8* X, u32 n) {
 	for (u32 i = 0; i < 32; i++)
 		R[i] = U8(H)[i];
 }
+
+/////////////////////////////////////////////////
+
+#define RIPEMD_step1(A, B, C, D, E, i, f) { \
+	A += f(B, C, D) + M[RIPEMD_I1[i]] + RIPEMD_K1[(i)/16]; \
+	A = ROL(A, RIPEMD_R1[i]) + E, C = ROL(C, 10); \
+}
+
+#define RIPEMD_step2(A, B, C, D, E, i, f) { \
+	A += f(B, C, D) + M[RIPEMD_I2[i]] + RIPEMD_K2[(i)/16]; \
+	A = ROL(A, RIPEMD_R2[i]) + E, C = ROL(C, 10); \
+}
+
+#define RIPEMD_round1(i, f1, f2) { \
+	RIPEMD_step1(A1, B1, C1, D1, E1, i, f1); \
+	RIPEMD_step2(A2, B2, C2, D2, E2, i, f2); \
+}
+
+#define RIPEMD_round2(i, f1, f2) { \
+	RIPEMD_step1(E1, A1, B1, C1, D1, i, f1); \
+	RIPEMD_step2(E2, A2, B2, C2, D2, i, f2); \
+}
+
+#define RIPEMD_round3(i, f1, f2) { \
+	RIPEMD_step1(D1, E1, A1, B1, C1, i, f1); \
+	RIPEMD_step2(D2, E2, A2, B2, C2, i, f2); \
+}
+
+#define RIPEMD_round4(i, f1, f2) { \
+	RIPEMD_step1(C1, D1, E1, A1, B1, i, f1); \
+	RIPEMD_step2(C2, D2, E2, A2, B2, i, f2); \
+}
+
+#define RIPEMD_round5(i, f1, f2) { \
+	RIPEMD_step1(B1, C1, D1, E1, A1, i, f1); \
+	RIPEMD_step2(B2, C2, D2, E2, A2, i, f2); \
+}
+
+#define RIPEMD_rounds(a, b, c, d, e, f1, f2) { \
+	RIPEMD_round##a(i, f1, f2); \
+	RIPEMD_round##b(i+1, f1, f2); \
+	RIPEMD_round##c(i+2, f1, f2); \
+	RIPEMD_round##d(i+3, f1, f2); \
+	RIPEMD_round##e(i+4, f1, f2); \
+}
+
+/////////////////////////////////////////////////
+
+void ripemd160(u8* R, const u8* X, u32 n) {
+	u32 M[16] = {};
+	M[14] = 8*n, M[15] = 0;
+
+	U8(M)[n] = 0x80;
+	for (u32 i = 0; i < n; i++)
+		U8(M)[i] = X[i];
+
+	u32 A1 = RIPEMD_IV[0], A2 = A1;
+	u32 B1 = RIPEMD_IV[1], B2 = B1;
+	u32 C1 = RIPEMD_IV[2], C2 = C1;
+	u32 D1 = RIPEMD_IV[3], D2 = D1;
+	u32 E1 = RIPEMD_IV[4], E2 = E1;
+
+	for (u32 i = 0; i < 15; i += 5)
+		RIPEMD_rounds(1, 2, 3, 4, 5, RIPEMD_f1, RIPEMD_f5);
+
+	RIPEMD_round1(15, RIPEMD_f1, RIPEMD_f5);
+	for (u32 i = 16; i < 31; i += 5)
+		RIPEMD_rounds(2, 3, 4, 5, 1, RIPEMD_f2, RIPEMD_f4);
+
+	RIPEMD_round2(31, RIPEMD_f2, RIPEMD_f4);
+	for (u32 i = 32; i < 47; i += 5)
+		RIPEMD_rounds(3, 4, 5, 1, 2, RIPEMD_f3, RIPEMD_f3);
+
+	RIPEMD_round3(47, RIPEMD_f3, RIPEMD_f3);
+	for (u32 i = 48; i < 63; i += 5)
+		RIPEMD_rounds(4, 5, 1, 2, 3, RIPEMD_f4, RIPEMD_f2);
+
+	RIPEMD_round4(63, RIPEMD_f4, RIPEMD_f2);
+	for (u32 i = 64; i < 79; i += 5)
+		RIPEMD_rounds(5, 1, 2, 3, 4, RIPEMD_f5, RIPEMD_f1);
+
+	RIPEMD_round5(79, RIPEMD_f5, RIPEMD_f1);
+
+	U32(R)[0] = C1 + D2 + RIPEMD_IV[1];
+	U32(R)[1] = D1 + E2 + RIPEMD_IV[2];
+	U32(R)[2] = E1 + A2 + RIPEMD_IV[3];
+	U32(R)[3] = A1 + B2 + RIPEMD_IV[4];
+	U32(R)[4] = B1 + C2 + RIPEMD_IV[0];
+}
+
+/////////////////////////////////////////////////
+
+typedef struct { u32 a; u8 b; } base32_40;
+
+static u32 bech32_add(u32 h, u8 x) {
+	u8 b = h >> 25;
+	h = (h % (1<<25)) << 5 ^ (x%32);
+
+	for (u32 i = 0; i < 5; i++)
+		if ((b >> i) & 1)
+			h ^= BECH32_GEN[i];
+
+	return h;
+}
+
+void bech32(u8* R, u8* X, bech32_cfg C) {
+	u32 h = 1;
+
+	h = bech32_add(h, C.H[0] >> 5);
+	h = bech32_add(h, C.H[1] >> 5);
+	h = bech32_add(h, 0);
+
+	h = bech32_add(h, C.H[0]);
+	h = bech32_add(h, C.H[1]);
+	h = bech32_add(h, C.W);
+
+	for (u32 i = 0; i < 20; i += 5) {
+		base32_40 x = *(base32_40*)(X+i);
+		x.a = u32_bswap(x.a);
+
+		h = bech32_add(h, x.a >> 27);
+		h = bech32_add(h, x.a >> 22);
+		h = bech32_add(h, x.a >> 17);
+		h = bech32_add(h, x.a >> 12);
+		h = bech32_add(h, x.a >> 7);
+		h = bech32_add(h, x.a >> 2);
+		h = bech32_add(h, x.a<<3 | x.b>>5);
+		h = bech32_add(h, x.b);
+	}
+
+	for (u32 i = 0; i < 6; i++)
+		h = bech32_add(h, 0);
+
+	h ^= 1;
+	for (u32 i = 0; i < 6; i++)
+		R[i] = (h >> (25 - 5*i)) % 32;
+}

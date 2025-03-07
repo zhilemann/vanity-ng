@@ -77,12 +77,12 @@ void ed_normN(xyzt* R, const xyzt* P, u32 n) {
 	for (u32 i = n-1; i+1 > 1; i--) {
 		// `I * R[i-1].T * P[i].Z ~= 1`
 		ed_modmul(&Zi, &I, &R[i-1].t);
-		ed_xyzt_scale(&R[i], &Zi, &P[i]);
+		ed_xyzt_scale(R+i, &Zi, P+i);
 
 		ed_modmul(&I, &I, &P[i].z);
 	}
 
-	ed_xyzt_scale(&R[0], &I, &P[0]);
+	ed_xyzt_scale(R, &I, P);
 }
 
 /////////////////////////////////////////////////
@@ -170,14 +170,14 @@ void ed_lut_step(xy2d* R, xyzt* G, u32 w) {
 		T[0] = P;
 		for (u32 i = 1; i < N; i++)
 			// `T[i] = P + i * G`
-			ed_add_xyzt(&T[i], &T[i-1], G);
+			ed_add_xyzt(T+i, T+i-1, G);
 
 		// `P = P + N * G`
-		ed_add_xyzt(&P, &T[N-1], G);
+		ed_add_xyzt(&P, T+N-1, G);
 		ed_normN(T, T, N);
 
 		for (u32 j = 0; j < N; j++)
-			ed_xy2d_init(&R[i+j], &T[j]);
+			ed_xy2d_init(R+i+j, T+j);
 	}
 
 	*G = P;
