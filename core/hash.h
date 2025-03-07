@@ -3,12 +3,12 @@
 
 #include "core.h"
 
-const u32 SHA256_IV[8] = {
+static const u32 SHA256_IV[8] = {
 	0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
 	0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 };
 
-const u32 SHA256_K[64] = {
+static const u32 SHA256_K[64] = {
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
 	0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -29,14 +29,14 @@ const u32 SHA256_K[64] = {
 
 /////////////////////////////////////////////////
 
-const u64 SHA512_IV[8] = {
+static const u64 SHA512_IV[8] = {
 	0x6a09e667f3bcc908, 0xbb67ae8584caa73b,
 	0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
 	0x510e527fade682d1, 0x9b05688c2b3e6c1f,
 	0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 };
 
-const u64 SHA512_K[80] = {
+static const u64 SHA512_K[80] = {
 	0x428a2f98d728ae22, 0x7137449123ef65cd,
 	0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
 	0x3956c25bf348b538, 0x59f111f1b605d019,
@@ -81,7 +81,7 @@ const u64 SHA512_K[80] = {
 
 /////////////////////////////////////////////////
 
-const u64 KECCAK_K[24] = {
+static const u64 KECCAK_K[24] = {
 	0x0000000000000001, 0x0000000000008082,
 	0x800000000000808a, 0x8000000080008000,
 	0x000000000000808b, 0x0000000080000001,
@@ -96,12 +96,12 @@ const u64 KECCAK_K[24] = {
 	0x0000000080000001, 0x8000000080008008,
 };
 
-const u64 KECCAK_RHO[24] = {
+static const u64 KECCAK_RHO[24] = {
 	1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14,
 	27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
 };
 
-const u64 KECCAK_PI[24] = {
+static const u64 KECCAK_PI[24] = {
 	10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4,
 	15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
 };
@@ -114,19 +114,19 @@ const u64 KECCAK_PI[24] = {
 #define RIPEMD_f4(x, y, z) RIPEMD_f2(z, x, y)
 #define RIPEMD_f5(x, y, z) RIPEMD_f3(y, z, x)
 
-const u32 RIPEMD_IV[5] = {
+static const u32 RIPEMD_IV[5] = {
 	0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476,0xc3d2e1f0
 };
 
-const u32 RIPEMD_K1[5] = {
+static const u32 RIPEMD_K1[5] = {
 	0x0, 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xa953fd4e
 };
 
-const u32 RIPEMD_K2[5] = {
+static const u32 RIPEMD_K2[5] = {
 	0x50a28be6, 0x5c4dd124, 0x6d703ef3, 0x7a6d76e9, 0x0
 };
 
-const u32 RIPEMD_I1[80] = {
+static const u32 RIPEMD_I1[80] = {
 	0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 	7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8,
 	3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12,
@@ -134,7 +134,7 @@ const u32 RIPEMD_I1[80] = {
 	4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13,
 };
 
-const u32 RIPEMD_I2[80] = {
+static const u32 RIPEMD_I2[80] = {
 	5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12,
 	6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2,
 	15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13,
@@ -142,7 +142,7 @@ const u32 RIPEMD_I2[80] = {
 	12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11,
 };
 
-const u32 RIPEMD_R1[80] = {
+static const u32 RIPEMD_R1[80] = {
 	11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8,
 	7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12,
 	11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5,
@@ -150,7 +150,7 @@ const u32 RIPEMD_R1[80] = {
 	9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6,
 };
 
-const u32 RIPEMD_R2[80] = {
+static const u32 RIPEMD_R2[80] = {
 	8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6,
 	9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11,
 	9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5,
@@ -160,7 +160,7 @@ const u32 RIPEMD_R2[80] = {
 
 /////////////////////////////////////////////////
 
-const u32 BECH32_GEN[5] = {
+static const u32 BECH32_GEN[5] = {
 	0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3
 };
 

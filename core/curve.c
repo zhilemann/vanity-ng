@@ -1,50 +1,49 @@
 #include "core.h"
 
-const global xyzt ED_ID = { .y = { 1 }, .z = { 1 } };
-
-const global xyzt ED_G = {
-{
-	0x8f25d51a, 0xc9562d60, 0x9525a7b2, 0x692cc760,
-	0xfdd6dc5c, 0xc0a4e231, 0xcd6e53fe, 0x216936d3,
-},
-{
-	0x66666658, 0x66666666, 0x66666666, 0x66666666,
-	0x66666666, 0x66666666, 0x66666666, 0x66666666,
-},
-{
-	0xa5b7dda3, 0x6dde8ab3, 0x775152f5, 0x20f09f80,
-	0x64abe37d, 0x66ea4e8e, 0xd78b7665, 0x67875f0f,
-},
-	{ 1 }
+static const global bn_mut SECP_M = {
+	0xfffffc2f, 0xfffffffe, 0xffffffff, 0xffffffff,
+	0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
 };
 
-const global bn_mut ED_M = {
+static const global bn_mut ED_M = {
 	0xffffffed, 0xffffffff, 0xffffffff, 0xffffffff,
 	0xffffffff, 0xffffffff, 0xffffffff, 0x7fffffff,
 };
 
-const global bn_mut ED_2D = {
+static const global bn_mut ED_2D = {
 	0x26b2f159, 0xebd69b94, 0x8283b156, 0x00e0149a,
 	0xeef3d130, 0x198e80f2, 0x56dffce7, 0x2406d9dc,
 };
 
-/////////////////////////////////////////////////
+static void secp_modmul(bn_mut* R, bn X, bn Y) {
+	// `2^256 = 2^32 + 977`
+	bn2_mut U, V = {};
+	bn_mul512(&U, X, Y), V.l = U.l;
 
-static void ed_shrN(bn_mut* R, bn X, u32 n) {
-	for (u32 i = 0; i < 7; i++) {
-		R->d[i] = X->d[i] >> n;
-		R->d[i] |= X->d[i+1] << (32-n);
-	}
+	// step I: `V = U.l + (U.h << 32) + 977 * U.h`
+	bn_add(&V.l_32, &V.l_32, &U.h);
+	u64 ext = (u64)V.d[8];
+	ext += bn_muladd(&V.l, &V.l, 977, &U.h);
 
-	R->d[7] = X->d[7] >> n;
+	// step II: `U = V.l + (ext << 32) + 977 * ext`
+	U.l = V.l, U.h = BN_0;
+	bn_add64(&U.l_32, &U.l_32, ext);
+	bn_add64(&U.l, &U.l, 977 * ext);
+
+	if (bn_cmp(&U.l, &SECP_M) > LT)
+		bn_sub(&U.l, &U.l, &SECP_M);
+
+	*R = U.l;
 }
 
 static void ed_modmul(bn_mut* R, bn X, bn Y) {
+	// `2^256 ~= 38`
 	bn2_mut T; bn_mul512(&T, X, Y);
 
-	// `2^256 ~= 38`
+	// step I: `T = T.l + 38 * T.h`
 	u32 ext = bn_muladd(&T.l, &T.l, 38, &T.h);
-	bn_add32(&T.l, &T.l, 38 * ext);
+	// step II: `T = T.l + 38 * ext`
+	bn_add64(&T.l, &T.l, 38 * ext);
 
 	if (bn_cmp(&T.l, &ED_M) > LT)
 		bn_sub(&T.l, &T.l, &ED_M);
@@ -52,12 +51,73 @@ static void ed_modmul(bn_mut* R, bn X, bn Y) {
 	*R = T.l;
 }
 
-static void ed_xyzt_scale(xyzt* R, bn a, const xyzt* P) {
+/////////////////////////////////////////////////
+
+static void secp_addX(xy* R, const xy* P, const xy* Q) {
+	if (bn_cmp(&P->x, &Q->x) != EQ)
+		bn_modsub(&R->x, &P->y, &Q->y, &SECP_M);
+	else {
+		bn_mut T; secp_modmul(&T, &P->x, &Q->x);
+		bn_modadd(&R->x, &T, &T, &SECP_M);
+		bn_modadd(&R->x, &R->x, &T, &SECP_M);
+	}
+}
+
+static void secp_addY(xy* R, const xy* P, const xy* Q) {
+	if (bn_cmp(&P->x, &Q->x) != EQ)
+		bn_modsub(&R->x, &P->x, &Q->x, &SECP_M);
+	else
+		bn_modadd(&R->x, &P->y, &Q->y, &SECP_M);
+}
+
+static void secp_add(xy* R, const xy* P, const xy* Q) {
+	secp_modmul(&R->y, &R->x, &R->y);
+	secp_modmul(&R->x, &R->y, &R->y);
+
+	bn_modsub(&R->x, &R->x, &P->x, &SECP_M);
+	bn_modsub(&R->x, &R->x, &Q->x, &SECP_M);
+
+	bn_mut T; bn_modsub(&T, &P->x, &R->x, &SECP_M);
+	secp_modmul(&R->y, &R->y, &T);
+	bn_modsub(&R->y, &R->y, &P->y, &SECP_M);
+}
+
+u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n) {
+	for (u32 i = 0; i < n; i++)
+		secp_addY(&R[i], P, &Q[i]);
+
+	R[0].y = R[0].x;
+	for (u32 i = 1; i < n; i++)
+		// `R[i].y ~= R[0].x * ... * R[i].x`
+		secp_modmul(&R[i].y, &R[i-1].y, &R[i].x);
+
+	if (bn_cmp(&R[n-1].y, &BN_0) == EQ)
+		return 0;
+
+	bn_mut I; bn_modinv(&I, &R[n-1].y, &SECP_M);
+	for (u32 i = n-1; i+1 > 1; i--) {
+		// `I * R[i-1].y * R[i].x ~= 1`
+		secp_modmul(&R[i].y, &I, &R[i-1].y);
+		secp_modmul(&I, &I, &R[i].x);
+	}
+
+	R[0].y = I;
+	for (u32 i = 0; i < n; i++) {
+		secp_addX(&R[i], P, &Q[i]);
+		secp_add(&R[i], P, &Q[i]);
+	}
+
+	return 1;
+}
+
+/////////////////////////////////////////////////
+
+static void ed_xytz_scale(xytz* R, bn a, const xytz* P) {
 	ed_modmul(&R->x, &P->x, a);
 	ed_modmul(&R->y, &P->y, a);
 }
 
-static void ed_xy2d_init(xy2d* R, const xyzt* P) {
+static void ed_xy2d_init(xy2d* R, const xytz* P) {
 	bn_modsub(&R->a, &P->y, &P->x, &ED_M);
 	bn_modadd(&R->b, &P->y, &P->x, &ED_M);
 
@@ -65,30 +125,27 @@ static void ed_xy2d_init(xy2d* R, const xyzt* P) {
 	ed_modmul(&R->c, &R->c, &ED_2D);
 }
 
-void ed_normN(xyzt* R, const xyzt* P, u32 n) {
+void ed_normN(xytz* R, const xytz* P, u32 n) {
 	R[0].t = P[0].z;
 	for (u32 i = 1; i < n; i++)
-		// `R[i].T ~= P[0].Z * ... * P[i].Z`
+		// `R[i].t ~= P[0].z * ... * P[i].z`
 		ed_modmul(&R[i].t, &R[i-1].t, &P[i].z);
 
 	bn_mut I, Zi;
 	bn_modinv(&I, &R[n-1].t, &ED_M);
 
 	for (u32 i = n-1; i+1 > 1; i--) {
-		// `I * R[i-1].T * P[i].Z ~= 1`
+		// `I * R[i-1].t * P[i].z ~= 1`
 		ed_modmul(&Zi, &I, &R[i-1].t);
-		ed_xyzt_scale(R+i, &Zi, P+i);
-
 		ed_modmul(&I, &I, &P[i].z);
+		ed_xytz_scale(R+i, &Zi, P+i);
 	}
 
-	ed_xyzt_scale(R, &I, P);
+	ed_xytz_scale(R, &I, P);
 }
 
-/////////////////////////////////////////////////
-
 static void ed_add(
-	xyzt* R,
+	xytz* R,
 	const bn A, const bn B,
 	const bn C, const bn D
 ) {
@@ -109,9 +166,11 @@ static void ed_add(
 	ed_modmul(&R->z, &F, &G);
 }
 
-static void ed_add_xyzt(
-	xyzt* R,
-	const xyzt* P, const xyzt* Q
+/////////////////////////////////////////////////
+
+static void ed_add_xytz(
+	xytz* R,
+	const xytz* P, const xytz* Q
 ) {
 	bn_mut A, B, C, D;
 
@@ -139,8 +198,8 @@ static void ed_add_xyzt(
 }
 
 static void ed_add_xy2d(
-	xyzt* R,
-	const xyzt* P, const xy2d* Q
+	xytz* R,
+	const xytz* P, const xy2d* Q
 ) {
 	bn_mut A, B, C, D;
 
@@ -162,18 +221,18 @@ static void ed_add_xy2d(
 
 /////////////////////////////////////////////////
 
-void ed_lut_step(xy2d* R, xyzt* G, u32 w) {
+void ed_lut_step(xy2d* R, xytz* G, u32 w) {
 	const u32 N = 1024;
-	xyzt P = ED_ID, T[N];
+	xytz P = ED_ID, T[N];
 
 	for (u32 i = 0; i < (1<<w); i += N) {
 		T[0] = P;
 		for (u32 i = 1; i < N; i++)
 			// `T[i] = P + i * G`
-			ed_add_xyzt(T+i, T+i-1, G);
+			ed_add_xytz(T+i, T+i-1, G);
 
 		// `P = P + N * G`
-		ed_add_xyzt(&P, T+N-1, G);
+		ed_add_xytz(&P, T+N-1, G);
 		ed_normN(T, T, N);
 
 		for (u32 j = 0; j < N; j++)
@@ -183,20 +242,27 @@ void ed_lut_step(xy2d* R, xyzt* G, u32 w) {
 	*G = P;
 }
 
-void ed_mul(xyzt* R, bn X, const ed_lut* L) {
+void ed_mul(xytz* R, bn X, const ed_lut* L) {
 	bn_mut X_ = *X; *R = ED_ID;
 
 	for (u32 i = 0; i < 8; i++) {
 		u32 j = X_.d[0] % (1<<21);
 		ed_add_xy2d(R, R, &L->a[i][j]);
-		ed_shrN(&X_, &X_, 21);
+		bn_shrN(&X_, &X_, 21);
 	}
 
 	for (u32 i = 0; i < 4; i++) {
 		u32 j = X_.d[0] % (1<<22);
 		ed_add_xy2d(R, R, &L->b[i][j]);
-		ed_shrN(&X_, &X_, 22);
+		bn_shrN(&X_, &X_, 22);
 	}
+}
+
+/////////////////////////////////////////////////
+
+void secp_pubkey(u8* R, const xy* P) {
+	R[0] = 2 + P->y.d[0] & 1;
+	bn_bswap((bn_mut*)R+1, &P->x);
 }
 
 void ed_privkey(bn_mut* R, const u8* K) {
@@ -209,7 +275,7 @@ void ed_privkey(bn_mut* R, const u8* K) {
 	*R = *(bn_mut*)&H;
 }
 
-void ed_pubkey(bn_mut* R, const xyzt* P) {
+void ed_pubkey(bn_mut* R, const xytz* P) {
 	bn_bswap(R, &P->y);
-	R->d[0] |= (P->x.d[0] & 1) << 7;
+	R->d[0] |= P->x.d[0] & 1 << 7;
 }

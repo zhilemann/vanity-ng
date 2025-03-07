@@ -1,18 +1,25 @@
 #include "core.h"
 
 u32 u32_bswap(u32 x) {
+	// `x = 0xaabbccdd`
 	const u32 A = 0xff00ff00;
+	// `x = 0xbbaaddcc`
 	x = (x<<8 & A) | (x>>8 & ~A);
+	// `x = 0xddccbbaa`
 	return x<<16 | x>>16;
 }
 
 u64 u64_bswap(u64 x) {
+	// `x = 0xaabbccddeeffgghh`
 	const u64 A = 0xff00ff00ff00ff00;
 	const u64 B = 0xffff0000ffff0000;
 
+	// `x = 0xbbaaddccffeehhgg`
 	x = (x<<8 & A) | (x>>8 & ~A);
+	// `x = 0xddccbbaahhggffee`
 	x = (x<<16 & B) | (x>>16 & ~B);
 
+	// `x = 0xhhggffeeddccbbaa`
 	return x<<32 | x>>32;
 }
 
@@ -71,6 +78,15 @@ static void bn_shr1(bn_mut* R, bn X, u32 ext) {
 	R->d[7] = X->d[7] >> 1 | ext << 31;
 }
 
+void bn_shrN(bn_mut* R, bn X, u32 n) {
+	for (u32 i = 0; i < 7; i++) {
+		R->d[i] = X->d[i] >> n;
+		R->d[i] |= X->d[i+1] << (32-n);
+	}
+
+	R->d[7] = X->d[7] >> n;
+}
+
 static void bn_shl32N(bn_mut* R, bn X, u32 n) {
 	for (u32 i = 7; i+1 > n; i--)
 		R->d[i] = X->d[i-n];
@@ -79,7 +95,7 @@ static void bn_shl32N(bn_mut* R, bn X, u32 n) {
 		R->d[i] = 0;
 }
 
-u32 bn_add32(bn_mut* R, bn X, u32 y) {
+u32 bn_add64(bn_mut* R, bn X, u64 y) {
 	u64 t = y;
 	for (u32 i = 0; i < 8; i++) {
 		t += X->d[i];
@@ -115,7 +131,7 @@ void bn_modadd(bn_mut* R, bn X, bn Y, bn M) {
 }
 
 void bn_modsub(bn_mut* R, bn X, bn Y, bn M) {
-	if (bn_sub(R, X, Y)) bn_add(R, R, M);
+	if (bn_sub(R, X, Y)) { bn_add(R, R, M); }
 }
 
 /////////////////////////////////////////////////
@@ -154,6 +170,7 @@ void bn_mul512(bn2_mut* R, bn X, bn Y) {
 }
 
 void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
+	// see Handbook of Applied Cryptography, 14.20
 	*Q = BN_0, *R = *X;
 	if (bn_cmp(X, Y) == LT) return;
 
@@ -164,8 +181,7 @@ void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
 	for (u32 i = n; i+1 > m; i--) {
 		bn_shl32N(&Y1, Y, i-m);
 		while (bn_cmp(R, &Y1) > LT) {
-			// guess the quotient digit
-			// see Handbook of Applied Cryptography, 14.20
+			// lower bound for quotient digit
 			u64 k = bn_get64(R, i) / (1 + (u64)Y->d[m]);
 
 			if (k > 0) {
@@ -213,7 +229,7 @@ void bn_modinv(bn_mut* R, bn X, bn M) {
 	u32 neg = (int)B.h < 0;
 	if (neg) {
 		bn_neg(&B.l), B.h = ~B.h;
-		B.h += bn_add32(&B.l, &B.l, 1);
+		B.h += bn_add64(&B.l, &B.l, 1);
 	};
 
 	while (B.h > 0 || bn_cmp(&B.l, M) > LT)

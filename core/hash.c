@@ -11,6 +11,7 @@
 	t A = IV[0], B = IV[1], C = IV[2], D = IV[3]; \
 	t E = IV[4], F = IV[5], G = IV[6], H = IV[7];
 
+// partial unroll to avoid copies
 #define SHA2_step(r, K) { \
 	r(A, B, C, &D, E, F, G, &H, K[i], W[i]); \
 	r(H, A, B, &C, D, E, F, &G, K[i+1], W[i+1]); \
@@ -196,6 +197,7 @@ void sha3_256(u8* R, const u8* X, u32 n) {
 /////////////////////////////////////////////////
 
 void ripemd160(u8* R, const u8* X, u32 n) {
+	// this is fucking cursed
 	u32 M[16] = {};
 	M[14] = 8*n, M[15] = 0;
 
@@ -246,8 +248,7 @@ static u32 bech32_add(u32 h, u8 x) {
 	h = (h % (1<<25)) << 5 ^ (x%32);
 
 	for (u32 i = 0; i < 5; i++)
-		if ((b >> i) & 1)
-			h ^= BECH32_GEN[i];
+		if ((b>>i) & 1) { h ^= BECH32_GEN[i]; }
 
 	return h;
 }
