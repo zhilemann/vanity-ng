@@ -5,6 +5,16 @@
 	#define global
 #endif
 
+#define __WIDTH(x) (8*sizeof(x))
+#define PACKED __attribute__((packed))
+#define ALIGNED __attribute__((aligned(4)))
+
+#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
+#define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
+#define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
+
+/////////////////////////////////////////////////
+
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef long long i64;
@@ -14,27 +24,20 @@ typedef unsigned long long u64;
 #define U32(x) ((u32*)x)
 #define U64(x) ((u64*)x)
 
-#define __WIDTH(x) (8*sizeof(x))
-#define PACKED __attribute__((__packed__))
-
-#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
-#define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
-#define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
-
 // fuck OpenCL :(
-typedef struct PACKED { u32 d[8]; } bn_mut;
+typedef struct PACKED { u32 d[8]; } ALIGNED bn_mut;
 typedef const bn_mut* bn;
 
 typedef union PACKED {
 	u32 d[9];
 	struct { bn_mut l; u32 h; };
-} bn1_mut;
+} ALIGNED bn1_mut;
 
 typedef union PACKED {
 	u32 d[16];
 	struct { bn_mut l, h; };
 	struct { u32 _; bn_mut l_32; };
-} bn2_mut;
+} ALIGNED bn2_mut;
 
 static const bn_mut BN_0 = {};
 
@@ -64,19 +67,31 @@ void bn_modinv(bn_mut* R, bn X, bn M);
 
 /////////////////////////////////////////////////
 
-typedef struct PACKED { bn_mut x, y; } xy;
-typedef struct PACKED { bn_mut x, y, t, z; } xytz;
+typedef struct PACKED {
+	bn_mut x, y;
+} ALIGNED xy;
+
+typedef struct PACKED {
+	bn_mut x, y, t, z;
+} ALIGNED xytz;
 
 typedef struct PACKED {
 	bn_mut a; // `A = Y - X`
 	bn_mut b; // `B = Y + X`
 	bn_mut c; // `C = (2*D) * X * Y`
-} xy2d;
+} ALIGNED xy2d;
 
 typedef struct PACKED {
-	// `8*21 + 4*22` = 256
-	xy2d a[8][1<<21], b[4][1<<22];
-} ed_lut;
+	xy a[256];  // `a[i] = (2^i) * G`
+	xy b[1024]; // `b[i] = (i+1) * G`
+} ALIGNED secp_lut;
+
+typedef struct PACKED {
+	// `a[i][j] = (j << (21*i)) * G`
+	xy2d a[8][1<<21];
+	// `b[i][j] = (j << (22*i + 168)) * G`
+	xy2d b[4][1<<22];
+} ALIGNED ed_lut;
 
 static const global xy SECP_G = {
 {
@@ -109,10 +124,12 @@ static const global xytz ED_G = {
 
 // `R[i] = P + Q[i]`, returns 1 on success
 u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n);
+void secp_lut_init(secp_lut* R);
+void secp_mul(xy* R, bn X, const secp_lut* L);
 
 // uses `.t` and `.z` as scratch
 void ed_normN(xytz* R, const xytz* P, u32 n);
-void ed_lut_step(xy2d* R, xytz* G, u32 w);
+void ed_lut_step(xy2d* R, xytz* G, u32 n);
 void ed_mul(xytz* R, bn X, const ed_lut* L);
 
 void secp_pubkey(u8* R, const xy* P);
@@ -121,7 +138,7 @@ void ed_pubkey(bn_mut* R, const xytz* P);
 
 /////////////////////////////////////////////////
 
-typedef struct { u8 H[2], W; } bech32_cfg;
+typedef struct { u8 hr[2], wi; } bech32_cfg;
 
 void sha2_256(u8* R, const u8* X, u32 n);
 void sha2_512(u8* R, const u8* X, u32 n);
@@ -131,16 +148,13 @@ void sha3_256(u8* R, const u8* X, u32 n);
 void ripemd160(u8* R, const u8* X, u32 n);
 void bech32(u8* R, u8* X, bech32_cfg C);
 
-typedef struct {
-	u32 f; bn_mut S, K;
-} vanity_res;
+typedef struct PACKED {
+	u32 f; bn_mut s, k;
+} ALIGNED vanity_res;
 
-// `K = A + B * i;`
-typedef struct { bn_mut A, B; } vanity_seed;
-
-typedef struct {
-	bn_mut Pl, Ph; // `Pl <= X <= Ph`
-	bn_mut Sm, Sr; // `X ~= Sr` (mod Sm)
-} vanity_tgt;
+typedef struct PACKED {
+	bn_mut l, h; // `l <= x <= h`
+	bn_mut m, r; // `x ~= r` (mod m)
+} ALIGNED vanity_filt;
 
 #endif

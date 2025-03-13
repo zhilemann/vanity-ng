@@ -20,15 +20,13 @@
 	r(E, F, G, &H, A, B, C, &D, K[i+4], W[i+4]); \
 	r(D, E, F, &G, H, A, B, &C, K[i+5], W[i+5]); \
 	r(C, D, E, &F, G, H, A, &B, K[i+6], W[i+6]); \
-	r(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); \
-}
+	r(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); }
 
 #define SHA2_add(t, R, s, IV) { \
 	t(R)[0] = s(A + IV[0]), t(R)[1] = s(B + IV[1]); \
 	t(R)[2] = s(C + IV[2]), t(R)[3] = s(D + IV[3]); \
 	t(R)[4] = s(E + IV[4]), t(R)[5] = s(F + IV[5]); \
-	t(R)[6] = s(G + IV[6]), t(R)[7] = s(H + IV[7]); \
-}
+	t(R)[6] = s(G + IV[6]), t(R)[7] = s(H + IV[7]); }
 
 static inline void sha256_round(
 	u32 A, u32 B, u32 C, u32* D,
@@ -104,30 +102,30 @@ void sha2_512(u8* R, const u8* X, u32 n) {
 
 /////////////////////////////////////////////////
 
-#define U(i) (u[(i)%5])
+#define U(i) (t[(i)%5])
 #define FOR_x() for (u32 x = 0; x < 5; x++)
 #define FOR_y() for (u32 y = 0; y < 25; y += 5)
 
-static void sha3_round(u64* H, u32 i) {
-	u64 u[5], v;
+static inline void sha3_round(u64* H, u32 i) {
+	u64 t[5], u;
 	FOR_x() {
-		u[x] = 0;
-		FOR_y() u[x] ^= H[x+y];
+		t[x] = 0;
+		FOR_y() t[x] ^= H[x+y];
 	}
 
 	FOR_x() {
-		v = U(x+4) ^ ROL(U(x+1), 1);
-		FOR_y() H[x+y] ^= v;
+		u = U(x+4) ^ ROL(U(x+1), 1);
+		FOR_y() H[x+y] ^= u;
 	}
 
-	v = H[1];
+	u = H[1];
 	for (u32 i = 0; i < 24; i++) {
-		v = ROL(v, KECCAK_RHO[i]);
-		SWAP(H[KECCAK_PI[i]], v);
+		u = ROL(u, KECCAK_RHO[i]);
+		SWAP(H[KECCAK_PI[i]], u);
 	}
 
 	FOR_y() {
-		FOR_x() u[x] = H[x+y];
+		FOR_x() t[x] = H[x+y];
 		FOR_x() H[x+y] ^= ~U(x+1) & U(x+2);
 	}
 
@@ -142,6 +140,7 @@ void sha3_256(u8* R, const u8* X, u32 n) {
 	U8(H)[n] ^= 1;
 	U8(H)[135] ^= 0x80;
 
+	#pragma unroll
 	for (u32 i = 0; i < 24; i++)
 		sha3_round(H, i);
 
@@ -153,18 +152,15 @@ void sha3_256(u8* R, const u8* X, u32 n) {
 
 #define RIPEMD_step1(A, B, C, D, E, i, f) { \
 	A += f(B, C, D) + M[RIPEMD_I1[i]] + RIPEMD_K1[(i)/16]; \
-	A = ROL(A, RIPEMD_R1[i]) + E, C = ROL(C, 10); \
-}
+	A = ROL(A, RIPEMD_R1[i]) + E, C = ROL(C, 10); }
 
 #define RIPEMD_step2(A, B, C, D, E, i, f) { \
 	A += f(B, C, D) + M[RIPEMD_I2[i]] + RIPEMD_K2[(i)/16]; \
-	A = ROL(A, RIPEMD_R2[i]) + E, C = ROL(C, 10); \
-}
+	A = ROL(A, RIPEMD_R2[i]) + E, C = ROL(C, 10); }
 
 #define RIPEMD_round1(i, f1, f2) { \
 	RIPEMD_step1(A1, B1, C1, D1, E1, i, f1); \
-	RIPEMD_step2(A2, B2, C2, D2, E2, i, f2); \
-}
+	RIPEMD_step2(A2, B2, C2, D2, E2, i, f2); }
 
 #define RIPEMD_round2(i, f1, f2) { \
 	RIPEMD_step1(E1, A1, B1, C1, D1, i, f1); \
@@ -173,26 +169,22 @@ void sha3_256(u8* R, const u8* X, u32 n) {
 
 #define RIPEMD_round3(i, f1, f2) { \
 	RIPEMD_step1(D1, E1, A1, B1, C1, i, f1); \
-	RIPEMD_step2(D2, E2, A2, B2, C2, i, f2); \
-}
+	RIPEMD_step2(D2, E2, A2, B2, C2, i, f2); }
 
 #define RIPEMD_round4(i, f1, f2) { \
 	RIPEMD_step1(C1, D1, E1, A1, B1, i, f1); \
-	RIPEMD_step2(C2, D2, E2, A2, B2, i, f2); \
-}
+	RIPEMD_step2(C2, D2, E2, A2, B2, i, f2); }
 
 #define RIPEMD_round5(i, f1, f2) { \
 	RIPEMD_step1(B1, C1, D1, E1, A1, i, f1); \
-	RIPEMD_step2(B2, C2, D2, E2, A2, i, f2); \
-}
+	RIPEMD_step2(B2, C2, D2, E2, A2, i, f2); }
 
 #define RIPEMD_rounds(a, b, c, d, e, f1, f2) { \
 	RIPEMD_round##a(i, f1, f2); \
 	RIPEMD_round##b(i+1, f1, f2); \
 	RIPEMD_round##c(i+2, f1, f2); \
 	RIPEMD_round##d(i+3, f1, f2); \
-	RIPEMD_round##e(i+4, f1, f2); \
-}
+	RIPEMD_round##e(i+4, f1, f2); }
 
 /////////////////////////////////////////////////
 
@@ -241,7 +233,7 @@ void ripemd160(u8* R, const u8* X, u32 n) {
 
 /////////////////////////////////////////////////
 
-typedef struct { u32 a; u8 b; } base32_40;
+typedef struct PACKED { u32 a; u8 b; } base32_40;
 
 static u32 bech32_add(u32 h, u8 x) {
 	u8 b = h >> 25;
@@ -256,13 +248,13 @@ static u32 bech32_add(u32 h, u8 x) {
 void bech32(u8* R, u8* X, bech32_cfg C) {
 	u32 h = 1;
 
-	h = bech32_add(h, C.H[0] >> 5);
-	h = bech32_add(h, C.H[1] >> 5);
+	h = bech32_add(h, C.hr[0] >> 5);
+	h = bech32_add(h, C.hr[1] >> 5);
 	h = bech32_add(h, 0);
 
-	h = bech32_add(h, C.H[0]);
-	h = bech32_add(h, C.H[1]);
-	h = bech32_add(h, C.W);
+	h = bech32_add(h, C.hr[0]);
+	h = bech32_add(h, C.hr[1]);
+	h = bech32_add(h, C.wi);
 
 	for (u32 i = 0; i < 20; i += 5) {
 		base32_40 x = *(base32_40*)(X+i);
@@ -272,6 +264,7 @@ void bech32(u8* R, u8* X, bech32_cfg C) {
 		h = bech32_add(h, x.a >> 22);
 		h = bech32_add(h, x.a >> 17);
 		h = bech32_add(h, x.a >> 12);
+
 		h = bech32_add(h, x.a >> 7);
 		h = bech32_add(h, x.a >> 2);
 		h = bech32_add(h, x.a<<3 | x.b>>5);

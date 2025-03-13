@@ -16,24 +16,24 @@ static const global bn_mut ED_2D = {
 };
 
 static void secp_modmul(bn_mut* R, bn X, bn Y) {
-	// `2^256 = 2^32 + 977`
-	bn2_mut U, V = {};
-	bn_mul512(&U, X, Y), V.l = U.l;
+	// `2^256 ~= 2^32 + 977`
+	bn2_mut T, U = {};
+	bn_mul512(&T, X, Y), U.l = T.l;
 
-	// step I: `V = U.l + (U.h << 32) + 977 * U.h`
-	bn_add(&V.l_32, &V.l_32, &U.h);
-	u64 ext = (u64)V.d[8];
-	ext += bn_muladd(&V.l, &V.l, 977, &U.h);
+	// step I: `U = T.l + T.h<<32 + 977*T.h`
+	bn_add(&U.l_32, &U.l_32, &T.h);
+	u64 ext = (u64)U.d[8];
+	ext += bn_muladd(&U.l, &U.l, 977, &T.h);
 
-	// step II: `U = V.l + (ext << 32) + 977 * ext`
-	U.l = V.l, U.h = BN_0;
-	bn_add64(&U.l_32, &U.l_32, ext);
-	bn_add64(&U.l, &U.l, 977 * ext);
+	// step II: `T = U.l + ext<<32 + 977*ext`
+	T.l = U.l, T.h = BN_0;
+	bn_add64(&T.l_32, &T.l_32, ext);
+	bn_add64(&T.l, &T.l, 977 * ext);
 
-	if (bn_cmp(&U.l, &SECP_M) > LT)
-		bn_sub(&U.l, &U.l, &SECP_M);
+	if (bn_cmp(&T.l, &SECP_M) > LT)
+		bn_sub(&T.l, &T.l, &SECP_M);
 
-	*R = U.l;
+	*R = T.l;
 }
 
 static void ed_modmul(bn_mut* R, bn X, bn Y) {
@@ -58,6 +58,7 @@ static void secp_addX(xy* R, const xy* P, const xy* Q) {
 		bn_modsub(&R->x, &P->y, &Q->y, &SECP_M);
 	else {
 		bn_mut T; secp_modmul(&T, &P->x, &Q->x);
+
 		bn_modadd(&R->x, &T, &T, &SECP_M);
 		bn_modadd(&R->x, &R->x, &T, &SECP_M);
 	}
@@ -70,7 +71,7 @@ static void secp_addY(xy* R, const xy* P, const xy* Q) {
 		bn_modadd(&R->x, &P->y, &Q->y, &SECP_M);
 }
 
-static void secp_add(xy* R, const xy* P, const xy* Q) {
+static void secp_add_0(xy* R, const xy* P, const xy* Q) {
 	secp_modmul(&R->y, &R->x, &R->y);
 	secp_modmul(&R->x, &R->y, &R->y);
 
@@ -80,6 +81,11 @@ static void secp_add(xy* R, const xy* P, const xy* Q) {
 	bn_mut T; bn_modsub(&T, &P->x, &R->x, &SECP_M);
 	secp_modmul(&R->y, &R->y, &T);
 	bn_modsub(&R->y, &R->y, &P->y, &SECP_M);
+}
+
+static void secp_add(xy* R, const xy* P, const xy* Q) {
+	xy T; secp_addX(&T, P, Q), secp_addY(&T, P, Q);
+	secp_add_0(&T, P, Q), *R = T;
 }
 
 u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n) {
@@ -104,10 +110,32 @@ u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n) {
 	R[0].y = I;
 	for (u32 i = 0; i < n; i++) {
 		secp_addX(&R[i], P, &Q[i]);
-		secp_add(&R[i], P, &Q[i]);
+		secp_add_0(&R[i], P, &Q[i]);
 	}
 
 	return 1;
+}
+
+/////////////////////////////////////////////////
+
+void secp_lut_init(secp_lut* R) {
+	R->a[0] = R->b[0] = SECP_G;
+	for (u32 i = 1; i < 256; i++)
+		secp_add(&R->a[i], &R->a[i-1], &R->a[i-1]);
+
+	for (u32 i = 1; i < 1024; i++)
+		secp_add(&R->b[i], &R->b[i-1], &SECP_G);
+}
+
+void secp_mul(xy* R, bn X, const secp_lut* L) {
+	bn_mut X_ = *X; u32 i = 0;
+	while (!(X_.d[0] & 1))
+		bn_shrN(&X_, &X_, 1), i++;
+
+	bn_shrN(&X_, &X_, 1), *R = L->a[i];
+	while (i++ < 256)
+		if (X_.d[0] & 1)
+			secp_add(R, R, &L->a[i]);
 }
 
 /////////////////////////////////////////////////
@@ -144,6 +172,8 @@ void ed_normN(xytz* R, const xytz* P, u32 n) {
 	ed_xytz_scale(R, &I, P);
 }
 
+/////////////////////////////////////////////////
+
 static void ed_add(
 	xytz* R,
 	const bn A, const bn B,
@@ -165,8 +195,6 @@ static void ed_add(
 	ed_modmul(&R->t, &E, &H);
 	ed_modmul(&R->z, &F, &G);
 }
-
-/////////////////////////////////////////////////
 
 static void ed_add_xytz(
 	xytz* R,
@@ -221,11 +249,11 @@ static void ed_add_xy2d(
 
 /////////////////////////////////////////////////
 
-void ed_lut_step(xy2d* R, xytz* G, u32 w) {
+void ed_lut_step(xy2d* R, xytz* G, u32 n) {
 	const u32 N = 1024;
 	xytz P = ED_ID, T[N];
 
-	for (u32 i = 0; i < (1<<w); i += N) {
+	for (u32 i = 0; i < n; i += N) {
 		T[0] = P;
 		for (u32 i = 1; i < N; i++)
 			// `T[i] = P + i * G`
