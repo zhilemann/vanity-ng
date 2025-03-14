@@ -1,31 +1,36 @@
 #if !defined(CORE_H)
 #define CORE_H
 
-#if !defined(__OPENCL_C_VERSION__)
-	#define global
-#endif
-
-#define __WIDTH(x) (8*sizeof(x))
 #define PACKED __attribute__((packed))
 #define ALIGNED __attribute__((aligned(4)))
 
-#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
-#define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
-#define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
+// fuck OpenCL
+#if defined(__OPENCL_C_VERSION__)
+	typedef uchar u8;
+	typedef uint u32;
 
-/////////////////////////////////////////////////
+	typedef long i64;
+	typedef ulong u64;
+#else
+	#include <stdint.h>
+	#define global
 
-typedef unsigned char u8;
-typedef unsigned int u32;
-typedef long long i64;
-typedef unsigned long long u64;
+	typedef uint8_t u8;
+	typedef uint32_t u32;
+
+	typedef int64_t i64;
+	typedef uint64_t u64;
+#endif
 
 #define U8(x) ((u8*)x)
 #define U32(x) ((u32*)x)
 #define U64(x) ((u64*)x)
 
-// fuck OpenCL :(
-typedef struct PACKED { u32 d[8]; } ALIGNED bn_mut;
+// fuck OpenCL
+typedef struct PACKED {
+	u32 d[8];
+} ALIGNED bn_mut;
+
 typedef const bn_mut* bn;
 
 typedef union PACKED {
@@ -44,6 +49,12 @@ static const bn_mut BN_0 = {};
 typedef enum { LT, EQ, GT } ord;
 
 /////////////////////////////////////////////////
+
+#define __WIDTH(x) (8*sizeof(x))
+#define SWAP(x, y) ((x)^=(y), (y)^=(x), (x)^=(y))
+
+#define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
+#define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
 
 u32 u32_bswap(u32 x);
 u64 u64_bswap(u64 x);
@@ -76,9 +87,9 @@ typedef struct PACKED {
 } ALIGNED xytz;
 
 typedef struct PACKED {
-	bn_mut a; // `A = Y - X`
-	bn_mut b; // `B = Y + X`
-	bn_mut c; // `C = (2*D) * X * Y`
+	bn_mut a; // `a = y - x`
+	bn_mut b; // `b = y + x`
+	bn_mut c; // `c = (2*D) * x * y`
 } ALIGNED xy2d;
 
 typedef struct PACKED {
@@ -96,33 +107,26 @@ typedef struct PACKED {
 static const global xy SECP_G = {
 {
 	0x16f81798, 0x59f2815b, 0x2dce28d9, 0x029bfcdb,
-	0xce870b07, 0x55a06295, 0xf9dcbbac, 0x79be667e,
-},
+	0xce870b07, 0x55a06295, 0xf9dcbbac, 0x79be667e, },
 {
 	0xfb10d4b8, 0x9c47d08f, 0xa6855419, 0xfd17b448,
-	0x0e1108a8, 0x5da4fbfc, 0x26a3c465, 0x483ada77,
-}
-};
+	0x0e1108a8, 0x5da4fbfc, 0x26a3c465, 0x483ada77, } };
 
-static const global xytz ED_ID = { .y = { 1 }, .z = { 1 } };
+static const global xytz ED_ID = { {}, { 1 }, {}, { 1 } };
 
 static const global xytz ED_G = {
 {
 	0x8f25d51a, 0xc9562d60, 0x9525a7b2, 0x692cc760,
-	0xfdd6dc5c, 0xc0a4e231, 0xcd6e53fe, 0x216936d3,
-},
+	0xfdd6dc5c, 0xc0a4e231, 0xcd6e53fe, 0x216936d3, },
 {
 	0x66666658, 0x66666666, 0x66666666, 0x66666666,
-	0x66666666, 0x66666666, 0x66666666, 0x66666666,
-},
+	0x66666666, 0x66666666, 0x66666666, 0x66666666, },
 {
 	0xa5b7dda3, 0x6dde8ab3, 0x775152f5, 0x20f09f80,
 	0x64abe37d, 0x66ea4e8e, 0xd78b7665, 0x67875f0f,
-},
-	{ 1 }
-};
+}, { 1 } };
 
-// `R[i] = P + Q[i]`, returns 1 on success
+// `R[i] = P + Q[i]`, returns 0 on error
 u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n);
 void secp_lut_init(secp_lut* R);
 void secp_mul(xy* R, bn X, const secp_lut* L);
@@ -142,7 +146,6 @@ typedef struct { u8 hr[2], wi; } bech32_cfg;
 
 void sha2_256(u8* R, const u8* X, u32 n);
 void sha2_512(u8* R, const u8* X, u32 n);
-
 void sha3_256(u8* R, const u8* X, u32 n);
 
 void ripemd160(u8* R, const u8* X, u32 n);

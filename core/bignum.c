@@ -24,7 +24,7 @@ u64 u64_bswap(u64 x) {
 }
 
 #if defined(__OPENCL_C_VERSION__)
-	#define u32_mul64(x, y) (mul_hi(x, y)<<32 | x*y)
+	#define u32_mul64(x, y) ((u64)mul_hi(x, y)<<32 | x*y)
 #else
 	#define u32_mul64(x, y) (x * (u64)y)
 #endif

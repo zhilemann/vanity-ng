@@ -12,7 +12,7 @@ kernel void vanity_solana(
 	a *= get_global_size(1), a += get_global_id(1);
 	a *= get_global_size(2), a += get_global_id(2);
 
-	const u32 N = 1024;
+	const u32 N = 256;
 	bn_mut Ss[N], K; xytz P[N];
 
 	for (u32 i = 0; i < N; i++) {
@@ -23,16 +23,17 @@ kernel void vanity_solana(
 
 	ed_normN(P, P, N);
 	for (u32 i = 0; i < N; i++) {
+		if (R->f) return;
 		ed_pubkey(&K, &P[i]);
 
 		if (bn_cmp(&F->l, &K) == GT) continue;
 		if (bn_cmp(&K, &F->h) == GT) continue;
 
-		bn_mut _, Rm;
+		/* bn_mut _, Rm;
 		bn_divmod(&_, &Rm, &K, &F->m);
 
 		if (bn_cmp(&Rm, &F->r) != EQ)
-			continue;
+			continue; */
 
 		if (atomic_inc(&R->f) == 0)
 			R->s = Ss[i], R->k = K;
