@@ -1,8 +1,10 @@
 #include "core.h"
 
+typedef struct PACKED { u32 a; u8 b; } base32_40;
+
 u32 u32_bswap(u32 x) {
 	// `x = 0xaabbccdd`
-	const u32 A = 0xff00ff00;
+	u32 A = 0xff00ff00;
 	// `x = 0xbbaaddcc`
 	x = (x<<8 & A) | (x>>8 & ~A);
 	// `x = 0xddccbbaa`
@@ -11,8 +13,8 @@ u32 u32_bswap(u32 x) {
 
 u64 u64_bswap(u64 x) {
 	// `x = 0xaabbccddeeffgghh`
-	const u64 A = 0xff00ff00ff00ff00;
-	const u64 B = 0xffff0000ffff0000;
+	u64 A = 0xff00ff00ff00ff00;
+	u64 B = 0xffff0000ffff0000;
 
 	// `x = 0xbbaaddccffeehhgg`
 	x = (x<<8 & A) | (x>>8 & ~A);
@@ -21,6 +23,21 @@ u64 u64_bswap(u64 x) {
 
 	// `x = 0xhhggffeeddccbbaa`
 	return x<<32 | x>>32;
+}
+
+void u8_base32(u8* R, const u8* X, u32 n) {
+	for (u32 i = n/5 - 1; i+1 > 0; i--) {
+		u8* r = R + 8*i;
+
+		base32_40 x = *(base32_40*)(X + 5*i);
+		x.a = u32_bswap(x.a);
+
+		r[0] = x.a >> 27, r[1] = x.a >> 22;
+		r[2] = x.a >> 17, r[3] = x.a >> 12;
+
+		r[4] = x.a >> 7, r[5] = x.a >> 2;
+		r[6] = x.a<<3 | x.b>>5, r[7] = x.b;
+	}
 }
 
 #if defined(__OPENCL_C_VERSION__)
@@ -169,9 +186,9 @@ void bn_mul512(bn2_mut* R, bn X, bn Y) {
 	}
 }
 
-void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
+void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y) {
 	// see Handbook of Applied Cryptography, 14.20
-	*Q = BN_0, *R = *X;
+	*Qu = BN_0, *Re = *X;
 	if (bn_cmp(X, Y) == LT) return;
 
 	bn_mut Y1;
@@ -180,16 +197,16 @@ void bn_divmod(bn_mut* Q, bn_mut* R, bn X, bn Y) {
 
 	for (u32 i = n; i+1 > m; i--) {
 		bn_shl32N(&Y1, Y, i-m);
-		while (bn_cmp(R, &Y1) > LT) {
+		while (bn_cmp(Re, &Y1) > LT) {
 			// lower bound for quotient digit
-			u64 k = bn_get64(R, i) / (1 + (u64)Y->d[m]);
+			u64 k = bn_get64(Re, i) / (1 + (u64)Y->d[m]);
 
 			if (k > 0) {
-				Q->d[i-m] += k;
-				bn_mulsub(R, R, k, &Y1);
+				Qu->d[i-m] += k;
+				bn_mulsub(Re, Re, k, &Y1);
 			} else {
-				Q->d[i-m] += 1;
-				bn_sub(R, R, &Y1);
+				Qu->d[i-m] += 1;
+				bn_sub(Re, Re, &Y1);
 			}
 		}
 	}

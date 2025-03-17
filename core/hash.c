@@ -7,26 +7,26 @@
 #define Ma(x, y, z) ((x)&(y) ^ (x)&(z) ^ (y)&(z))
 #define Ch(x, y, z) ((x)&(y) ^ ~(x)&(z))
 
-#define SHA2_init(t, IV) \
-	t A = IV[0], B = IV[1], C = IV[2], D = IV[3]; \
-	t E = IV[4], F = IV[5], G = IV[6], H = IV[7];
+#define SHA2_init(ty, IV) \
+	ty A = IV[0], B = IV[1], C = IV[2], D = IV[3]; \
+	ty E = IV[4], F = IV[5], G = IV[6], H = IV[7];
 
 // partial unroll to avoid copies
-#define SHA2_step(r, K) { \
-	r(A, B, C, &D, E, F, G, &H, K[i], W[i]); \
-	r(H, A, B, &C, D, E, F, &G, K[i+1], W[i+1]); \
-	r(G, H, A, &B, C, D, E, &F, K[i+2], W[i+2]); \
-	r(F, G, H, &A, B, C, D, &E, K[i+3], W[i+3]); \
-	r(E, F, G, &H, A, B, C, &D, K[i+4], W[i+4]); \
-	r(D, E, F, &G, H, A, B, &C, K[i+5], W[i+5]); \
-	r(C, D, E, &F, G, H, A, &B, K[i+6], W[i+6]); \
-	r(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); }
+#define SHA2_step(ro, K) { \
+	ro(A, B, C, &D, E, F, G, &H, K[i], W[i]); \
+	ro(H, A, B, &C, D, E, F, &G, K[i+1], W[i+1]); \
+	ro(G, H, A, &B, C, D, E, &F, K[i+2], W[i+2]); \
+	ro(F, G, H, &A, B, C, D, &E, K[i+3], W[i+3]); \
+	ro(E, F, G, &H, A, B, C, &D, K[i+4], W[i+4]); \
+	ro(D, E, F, &G, H, A, B, &C, K[i+5], W[i+5]); \
+	ro(C, D, E, &F, G, H, A, &B, K[i+6], W[i+6]); \
+	ro(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); }
 
-#define SHA2_add(t, R, s, IV) { \
-	t(R)[0] = s(A + IV[0]), t(R)[1] = s(B + IV[1]); \
-	t(R)[2] = s(C + IV[2]), t(R)[3] = s(D + IV[3]); \
-	t(R)[4] = s(E + IV[4]), t(R)[5] = s(F + IV[5]); \
-	t(R)[6] = s(G + IV[6]), t(R)[7] = s(H + IV[7]); }
+#define SHA2_add(ty, R, sw, IV) { \
+	ty(R)[0] = sw(A + IV[0]), ty(R)[1] = sw(B + IV[1]); \
+	ty(R)[2] = sw(C + IV[2]), ty(R)[3] = sw(D + IV[3]); \
+	ty(R)[4] = sw(E + IV[4]), ty(R)[5] = sw(F + IV[5]); \
+	ty(R)[6] = sw(G + IV[6]), ty(R)[7] = sw(H + IV[7]); }
 
 static inline void sha256_round(
 	u32 A, u32 B, u32 C, u32* D,
@@ -133,19 +133,19 @@ static inline void sha3_round(u64* H, u32 i) {
 }
 
 void sha3_256(u8* R, const u8* X, u32 n) {
-	u64 H[25] = {};
+	u8 H[1600/8] = {};
 	for (u32 i = 0; i < n; i++)
-		U8(H)[i] = X[i];
+		H[i] = X[i];
 
-	U8(H)[n] ^= 1;
-	U8(H)[135] ^= 0x80;
+	H[n] ^= 1;
+	H[sizeof(H) - 2*32 - 1] ^= 0x80;
 
 	#pragma unroll
 	for (u32 i = 0; i < 24; i++)
-		sha3_round(H, i);
+		sha3_round(U64(H), i);
 
 	for (u32 i = 0; i < 32; i++)
-		R[i] = U8(H)[i];
+		R[i] = H[i];
 }
 
 /////////////////////////////////////////////////
@@ -164,8 +164,7 @@ void sha3_256(u8* R, const u8* X, u32 n) {
 
 #define RIPEMD_round2(i, f1, f2) { \
 	RIPEMD_step1(E1, A1, B1, C1, D1, i, f1); \
-	RIPEMD_step2(E2, A2, B2, C2, D2, i, f2); \
-}
+	RIPEMD_step2(E2, A2, B2, C2, D2, i, f2); }
 
 #define RIPEMD_round3(i, f1, f2) { \
 	RIPEMD_step1(D1, E1, A1, B1, C1, i, f1); \
@@ -233,43 +232,29 @@ void ripemd160(u8* R, const u8* X, u32 n) {
 
 /////////////////////////////////////////////////
 
-typedef struct PACKED { u32 a; u8 b; } base32_40;
-
 static u32 bech32_add(u32 h, u8 x) {
 	u8 b = h >> 25;
 	h = (h % (1<<25)) << 5 ^ (x%32);
 
 	for (u32 i = 0; i < 5; i++)
-		if ((b>>i) & 1) { h ^= BECH32_GEN[i]; }
+		if (b>>i & 1) { h ^= BECH32_GEN[i]; }
 
 	return h;
 }
 
-void bech32(u8* R, u8* X, bech32_cfg C) {
+void bech32(u8* R, u8* X, constant char hr[2], u8 wi) {
 	u32 h = 1;
 
-	h = bech32_add(h, C.hr[0] >> 5);
-	h = bech32_add(h, C.hr[1] >> 5);
+	h = bech32_add(h, hr[0] >> 5);
+	h = bech32_add(h, hr[1] >> 5);
 	h = bech32_add(h, 0);
 
-	h = bech32_add(h, C.hr[0]);
-	h = bech32_add(h, C.hr[1]);
-	h = bech32_add(h, C.wi);
+	h = bech32_add(h, hr[0]);
+	h = bech32_add(h, hr[1]);
+	h = bech32_add(h, wi);
 
-	for (u32 i = 0; i < 20; i += 5) {
-		base32_40 x = *(base32_40*)(X+i);
-		x.a = u32_bswap(x.a);
-
-		h = bech32_add(h, x.a >> 27);
-		h = bech32_add(h, x.a >> 22);
-		h = bech32_add(h, x.a >> 17);
-		h = bech32_add(h, x.a >> 12);
-
-		h = bech32_add(h, x.a >> 7);
-		h = bech32_add(h, x.a >> 2);
-		h = bech32_add(h, x.a<<3 | x.b>>5);
-		h = bech32_add(h, x.b);
-	}
+	for (u32 i = 0; i < 32; i++)
+		h = bech32_add(h, X[i]);
 
 	for (u32 i = 0; i < 6; i++)
 		h = bech32_add(h, 0);

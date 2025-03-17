@@ -2,6 +2,7 @@
 #include "vanity.h"
 #include <CL/cl.h>
 
+#include <immintrin.h>
 #include <time.h>
 
 void bn_print(bn x) {
@@ -10,6 +11,8 @@ void bn_print(bn x) {
 	printf("\n");
 }
 
+
+/*
 void vanity_run(vanity_res* R, vanity_dev* D) {
 	vanity_rng rng;
 	vanity_seed(&rng);
@@ -19,7 +22,7 @@ void vanity_run(vanity_res* R, vanity_dev* D) {
 
 	bn_mut S = {}; cl_event ev1, ev2;
 	long st = clock(); long el = 0;
-	do {
+	do {:
 		vanity_random(&rng, (void*)&S, sizeof(bn_mut));
 		S.d[0] |= 1; // `gcd(S, 2^256) == 1`
 
@@ -50,9 +53,9 @@ void vanity_run(vanity_res* R, vanity_dev* D) {
 	printf("\n");
 	bn_print(&R->k);
 }
-
+*/
 int main(int argc, char** argv) {
-	vanity_tmp_init();
+	/* vanity_tmp_init();
 
 	ed_lut* L = vanity_ed_lut();
 	vanity_filt F = {
@@ -67,6 +70,6 @@ int main(int argc, char** argv) {
 	vanity_config(V, &F, L, sizeof(ed_lut)), free(L);
 	vanity_run(&R, &V->D[0]);
 
-	vanity_close(V);
+	vanity_close(V); */
 	return 0;
 }

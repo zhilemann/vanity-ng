@@ -83,11 +83,6 @@ static void secp_add_0(xy* R, const xy* P, const xy* Q) {
 	bn_modsub(&R->y, &R->y, &P->y, &SECP_M);
 }
 
-static void secp_add(xy* R, const xy* P, const xy* Q) {
-	xy T; secp_addX(&T, P, Q), secp_addY(&T, P, Q);
-	secp_add_0(&T, P, Q), *R = T;
-}
-
 u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n) {
 	for (u32 i = 0; i < n; i++)
 		secp_addY(&R[i], P, &Q[i]);
@@ -116,17 +111,6 @@ u32 secp_addN(xy* R, const xy* P, const xy* Q, u32 n) {
 	return 1;
 }
 
-/////////////////////////////////////////////////
-
-void secp_lut_init(secp_lut* R) {
-	R->a[0] = R->b[0] = SECP_G;
-	for (u32 i = 1; i < 256; i++)
-		secp_add(&R->a[i], &R->a[i-1], &R->a[i-1]);
-
-	for (u32 i = 1; i < 1024; i++)
-		secp_add(&R->b[i], &R->b[i-1], &SECP_G);
-}
-
 void secp_mul(xy* R, bn X, const secp_lut* L) {
 	bn_mut X_ = *X; u32 i = 0;
 	while (!(X_.d[0] & 1))
@@ -135,7 +119,7 @@ void secp_mul(xy* R, bn X, const secp_lut* L) {
 	bn_shrN(&X_, &X_, 1), *R = L->a[i];
 	while (i++ < 256)
 		if (X_.d[0] & 1)
-			secp_add(R, R, &L->a[i]);
+			secp_addN(R, R, &L->a[i], 1);
 }
 
 /////////////////////////////////////////////////
@@ -290,7 +274,7 @@ void ed_mul(xytz* R, bn X, const ed_lut* L) {
 
 void secp_pubkey(u8* R, const xy* P) {
 	R[0] = 2 + P->y.d[0] & 1;
-	bn_bswap((bn_mut*)R+1, &P->x);
+	bn_bswap(BN(R+1), &P->x);
 }
 
 void ed_privkey(bn_mut* R, const u8* K) {
@@ -303,7 +287,7 @@ void ed_privkey(bn_mut* R, const u8* K) {
 	*R = *(bn_mut*)&H;
 }
 
-void ed_pubkey(bn_mut* R, const xytz* P) {
-	bn_bswap(R, &P->y);
-	R->d[0] |= P->x.d[0] & 1 << 7;
+void ed_pubkey(u8* R, const xytz* P) {
+	bn_bswap(BN(R), &P->y);
+	R[0] |= P->x.d[0] & 1 << 7;
 }
