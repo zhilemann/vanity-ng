@@ -2,6 +2,33 @@
 
 typedef struct PACKED { u32 a; u8 b; } base32_40;
 
+void u8_copy(u8* R, const u8* X, u32 n) {
+	for (u32 i = 0; i < n; i++) { R[i] = X[i]; }
+}
+
+u32 u8_pat_test(const u8* X, const u8_pat* P, u32 n) {
+	u32 r = 1;
+	for (u32 i = 0; i < n; i++)
+		r &= (X[i] & P[i].m) == P[i].b;
+
+	return r;
+}
+
+void u8_base32(u8* R, const u8* X, u32 n) {
+	for (u32 i = n/5 - 1; i+1 > 0; i--) {
+		u8* r = R + 8*i;
+
+		base32_40 x = *(base32_40*)(X + 5*i);
+		x.a = u32_bswap(x.a);
+
+		r[0] = x.a >> 27, r[1] = x.a >> 22;
+		r[2] = x.a >> 17, r[3] = x.a >> 12;
+
+		r[4] = x.a >> 7, r[5] = x.a >> 2;
+		r[6] = x.a<<3 | x.b>>5, r[7] = x.b;
+	}
+}
+
 u32 u32_bswap(u32 x) {
 	// `x = 0xaabbccdd`
 	u32 A = 0xff00ff00;
@@ -23,21 +50,6 @@ u64 u64_bswap(u64 x) {
 
 	// `x = 0xhhggffeeddccbbaa`
 	return x<<32 | x>>32;
-}
-
-void u8_base32(u8* R, const u8* X, u32 n) {
-	for (u32 i = n/5 - 1; i+1 > 0; i--) {
-		u8* r = R + 8*i;
-
-		base32_40 x = *(base32_40*)(X + 5*i);
-		x.a = u32_bswap(x.a);
-
-		r[0] = x.a >> 27, r[1] = x.a >> 22;
-		r[2] = x.a >> 17, r[3] = x.a >> 12;
-
-		r[4] = x.a >> 7, r[5] = x.a >> 2;
-		r[6] = x.a<<3 | x.b>>5, r[7] = x.b;
-	}
 }
 
 #if defined(__OPENCL_C_VERSION__)
