@@ -59,9 +59,9 @@ u64 u64_bswap(u64 x) {
 	#define u32_mul64(x, y) (x * (u64)y)
 #endif
 
-static void bn_neg(bn_mut* R) {
+void bn_neg(bn_mut* R, bn X) {
 	for (u32 i = 0; i < 8; i++)
-		R->d[i] = ~R->d[i];
+		R->d[i] = ~X->d[i];
 }
 
 void bn_bswap(bn_mut* R, bn X) {
@@ -78,7 +78,7 @@ static u32 bn_width(bn X) {
 	return n;
 }
 
-static u64 bn_get64(bn X, u32 i) {
+u64 bn_get64(bn X, u32 i) {
 	u32 l = X->d[i], h = 0;
 	if (i < 7) h = X->d[i+1];
 	return (u64)h << 32 | l;
@@ -115,11 +115,6 @@ void bn_shrN(bn_mut* R, bn X, u32 n) {
 	}
 
 	R->d[7] = X->d[7] >> n;
-}
-
-void bn_shr8N(bn_mut* R, bn X, u32 n) {
-	mem_copy(R, U8(X)+n, 32-n);
-	mem_copy(U8(R) + 32-n, &BN_0, n);
 }
 
 static void bn_shl32N(bn_mut* R, bn X, u32 n) {
@@ -205,7 +200,6 @@ void bn_mul512(bn2_mut* R, bn X, bn Y) {
 }
 
 void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y) {
-	// see Handbook of Applied Cryptography, 14.20
 	*Qu = BN_0, *Re = *X;
 	if (bn_cmp(X, Y) == LT) return;
 
@@ -216,7 +210,6 @@ void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y) {
 	for (u32 i = n; i+1 > m; i--) {
 		bn_shl32N(&Y1, Y, i-m);
 		while (bn_cmp(Re, &Y1) > LT) {
-			// lower bound for quotient digit
 			u64 k = bn_get64(Re, i) / (1 + (u64)Y->d[m]);
 
 			if (k > 0) {
@@ -263,7 +256,7 @@ void bn_modinv(bn_mut* R, bn X, bn M) {
 
 	u32 neg = (int)B.h < 0;
 	if (neg) {
-		bn_neg(&B.l), B.h = ~B.h;
+		bn_neg(&B.l, &B.l), B.h = ~B.h;
 		B.h += bn_add64(&B.l, &B.l, 1);
 	};
 

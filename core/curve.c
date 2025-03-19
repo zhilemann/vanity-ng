@@ -286,17 +286,15 @@ void secp_pubkey64(u8* R, const xy* P) {
 	bn_bswap(BN(R+32), &P->y);
 }
 
-void ed_privkey(bn_mut* R, const u8* K) {
-	u8 B[128] = {};
-	for (u32 i = 0; i < 32; i++)
-		B[i] = K[i];
-
+void ed_privkey(bn_mut* R, bn S) {
+	u8 B[128] = {}; bn_bswap(BN(B), S);
 	u8 H[64]; sha2_512(H, B, 32);
+
 	H[0] &= 0xf8, H[31] &= 0x7f, H[31] |= 0x40;
 	*R = *(bn_mut*)&H;
 }
 
-void ed_pubkey(u8* R, const xytz* P) {
-	bn_bswap(BN(R), &P->y);
-	R[0] |= P->x.d[0] & 1 << 7;
+void ed_pubkey(bn_mut* R, const xytz* P) {
+	bn_bswap(R, &P->y);
+	R->d[0] |= (P->x.d[0] & 1) << 7;
 }

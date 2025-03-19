@@ -60,11 +60,12 @@ u32 u8_pat_test(const u8* X, const u8_pat* P, u32 n);
 u32 u32_bswap(u32 x);
 u64 u64_bswap(u64 x);
 
+void bn_neg(bn_mut* R, bn X);
 void bn_bswap(bn_mut* R, bn X);
-ord bn_cmp(bn X, bn Y);
 
+u64 bn_get64(bn X, u32 i);
+ord bn_cmp(bn X, bn Y);
 void bn_shrN(bn_mut* R, bn X, u32 n);
-void bn_shr8N(bn_mut* R, bn X, u32 n);
 
 u32 bn_add64(bn_mut* R, bn X, u64 y);
 u32 bn_add(bn_mut* R, bn X, bn Y);
@@ -141,23 +142,24 @@ void ed_mul(xytz* R, bn X, const ed_lut* L);
 void secp_pubkey33(u8* R, const xy* P);
 void secp_pubkey64(u8* R, const xy* P);
 
-void ed_privkey(bn_mut* R, const u8* K);
-void ed_pubkey(u8* R, const xytz* P);
+void ed_privkey(bn_mut* R, bn S);
+void ed_pubkey(bn_mut* R, const xytz* P);
 
 /////////////////////////////////////////////////
 
 typedef struct {
-	u32 f; bn_mut s; u8 k[40];
+	u32 f; bn_mut s;
+	union { bn_mut bn; u8 u8[40]; } k;
 } vanity_res;
 
 typedef struct {
 	bn_mut x; xy p; // `p = x * SECP_G`
-} vanity_seed;
+} secp_seed;
 
 typedef struct {
 	bn_mut l, h; // `l <= x <= h`
 	bn_mut r, m; // `x ~= r` (mod m)
-} vanity_filt58;
+} bn_filt58;
 
 void sha2_256(u8* R, const void* X, u32 n);
 void sha2_512(u8* R, const void* X, u32 n);

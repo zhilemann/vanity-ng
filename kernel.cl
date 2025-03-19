@@ -9,11 +9,9 @@ static u32 vanity_id() {
 	return x;
 }
 
-static u32 vanity_filt_test(bn X, const vanity_filt58* F) {
-	if (
-		bn_cmp(&F->l, X) == GT ||
-		bn_cmp(X, &F->h) == GT
-	) return 0;
+u32 bn_filt58_test(bn X, const bn_filt58* F) {
+	if (bn_cmp(&F->l, X) == GT) return 0;
+	if (bn_cmp(X, &F->h) == GT) return 0;
 
 	bn_mut _, R; bn_divmod(&_, &R, X, &F->m);
 	return bn_cmp(&R, &F->r) == EQ;
@@ -21,7 +19,7 @@ static u32 vanity_filt_test(bn X, const vanity_filt58* F) {
 
 kernel void vanity_eth(
 	global vanity_res* R,
-	global const vanity_seed* S,
+	global const secp_seed* S,
 	global const u8_pat* F,
 	global const secp_lut* L
 ) {
@@ -41,15 +39,15 @@ kernel void vanity_eth(
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_add64(&R->s, &S->x, N*id + i+1);
-			mem_copy(R->k, K+12, 20);
+			mem_copy(R->k.u8, K+12, 20);
 		}
 	}
 }
 
 kernel void vanity_btc_base58(
 	global vanity_res* R,
-	global const vanity_seed* S,
-	global const vanity_filt58* F,
+	global const secp_seed* S,
+	global const bn_filt58* F,
 	global const secp_lut* L
 ) {
 	if (R->f) return;
@@ -73,18 +71,18 @@ kernel void vanity_btc_base58(
 		mem_copy(K.u8+28, T, 4);
 		bn_bswap(&K.bn, &K.bn);
 
-		if (!vanity_filt_test(&K.bn, F)) continue;
+		if (!bn_filt58_test(&K.bn, F)) continue;
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_add64(&R->s, &S->x, N*id + i+1);
-			mem_copy(R->k, &K.bn, sizeof(K.bn));
+			R->k.bn = K.bn;
 		}
 	}
 }
 
 kernel void vanity_btc_bech32(
 	global vanity_res* R,
-	global const vanity_seed* S,
+	global const secp_seed* S,
 	global const u8_pat* F,
 	global const secp_lut* L
 ) {
@@ -105,15 +103,15 @@ kernel void vanity_btc_bech32(
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_add64(&R->s, &S->x, N*id + i+1);
-			mem_copy(R->k, K, 38);
+			mem_copy(R->k.u8, K, 38);
 		}
 	}
 }
 
-kernel void vanity_solana(
+kernel void vanity_sol(
 	global vanity_res* R,
 	global const bn_mut* S,
-	global const vanity_filt58* F,
+	global const bn_filt58* F,
 	global const ed_lut* L
 ) {
 	if (R->f) return;
@@ -123,7 +121,7 @@ kernel void vanity_solana(
 
 	for (u32 i = 0; i < N; i++) {
 		bn_muladd(&K, S, N*id + i, S);
-		ed_privkey(&K, U8(&K));
+		ed_privkey(&K, &K);
 		ed_mul(&P[i], &K, L);
 	}
 
@@ -131,12 +129,12 @@ kernel void vanity_solana(
 	for (u32 i = 0; i < N; i++) {
 		if (R->f) return;
 
-		ed_pubkey(U8(&K), &P[i]);
-		if (!vanity_filt_test(&K, F)) continue;
+		ed_pubkey(&K, &P[i]);
+		if (!bn_filt58_test(&K, F)) continue;
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_muladd(&R->s, S, N*id + i, S);
-			mem_copy(&R->k, &K, sizeof(K));
+			R->k.bn = K;
 		}
 	}
 }
