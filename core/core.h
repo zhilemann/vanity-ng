@@ -19,7 +19,6 @@
 	typedef uint64_t u64;
 #endif
 
-
 #define U8(x) ((u8*)(x))
 #define U32(x) ((u32*)(x))
 #define U64(x) ((u64*)(x))
@@ -43,6 +42,8 @@ typedef union {
 
 typedef enum { LT, EQ, GT } ord;
 
+
+static const u32 BATCH = 256;
 static const bn_mut BN_0 = {};
 
 /////////////////////////////////////////////////
@@ -53,7 +54,7 @@ static const bn_mut BN_0 = {};
 #define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
 #define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
 
-void u8_copy(u8* R, const u8* X, u32 n);
+void mem_copy(void* R, const void* X, u32 n);
 void u8_base32(u8* R, const u8* X, u32 n);
 u32 u8_pat_test(const u8* X, const u8_pat* P, u32 n);
 
@@ -73,6 +74,7 @@ void bn_modsub(bn_mut* R, bn X, bn Y, bn M);
 
 u32 bn_muladd(bn_mut* R, bn X, u32 a, bn Y);
 void bn_mul512(bn2_mut* R, bn X, bn Y);
+u32 bn_mul(bn_mut* R, bn X, bn Y);
 
 void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y);
 void bn_modinv(bn_mut* R, bn X, bn M);

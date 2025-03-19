@@ -1,5 +1,7 @@
 #include "core/core.h"
 
+static const u32 N = BATCH;
+
 static u32 vanity_id() {
 	u32 x = get_global_id(0);
 	x *= get_global_size(1);
@@ -13,7 +15,6 @@ kernel void vanity_btc_bech32(
 	global const u8_pat* F,
 	global const secp_lut* L
 ) {
-	const u32 N = 256;
 	if (R->f) return;
 
 	u32 id = vanity_id(); xy P[N];
@@ -30,7 +31,7 @@ kernel void vanity_btc_bech32(
 		if (u8_pat_test(T, F, 38))
 			if (atomic_inc(&R->f) == 0) {
 				bn_add64(&R->s, &S->x, N*id + i);
-				u8_copy(R->k, T, 32);
+				mem_copy(R->k, T, 32);
 			}
 	}
 }
@@ -41,7 +42,6 @@ kernel void vanity_eth(
 	global const u8_pat* F,
 	global const secp_lut* L
 ) {
-	const u32 N = 256;
 	if (R->f) return;
 
 	u32 id = vanity_id(); xy P[N];
@@ -57,7 +57,7 @@ kernel void vanity_eth(
 		if (u8_pat_test(T+12, F, 20))
 			if (atomic_inc(&R->f) == 0) {
 				bn_add64(&R->s, &S->x, N*id + i + 1);
-				u8_copy(R->k, T+12, 20);
+				mem_copy(R->k, T+12, 20);
 			}
 	}
 }

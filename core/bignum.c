@@ -2,8 +2,9 @@
 
 typedef struct PACKED { u32 a; u8 b; } base32_40;
 
-void u8_copy(u8* R, const u8* X, u32 n) {
-	for (u32 i = 0; i < n; i++) { R[i] = X[i]; }
+void mem_copy(void* R, const void* X, u32 n) {
+	for (u32 i = 0; i < n; i++)
+		U8(R)[i] = U8(X)[i];
 }
 
 u32 u8_pat_test(const u8* X, const u8_pat* P, u32 n) {
@@ -196,6 +197,11 @@ void bn_mul512(bn2_mut* R, bn X, bn Y) {
 		bn1_mut* r = (void*)&R->d[i];
 		r->h += bn_muladd(&r->l, &r->l, X->d[i], Y);
 	}
+}
+
+u32 bn_mul(bn_mut* R, bn X, bn Y) {
+	bn2_mut T; bn_mul512(&T, X, Y);
+	*R = T.l; return bn_cmp(&T.h, &BN_0) != EQ;
 }
 
 void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y) {

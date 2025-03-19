@@ -56,10 +56,7 @@ static inline void sha512_round(
 
 void sha2_256(u8* R, const void* X, u32 n) {
 	u32 W[64] = {};
-
-	U8(W)[n] = 0x80;
-	for (u32 i = 0; i < n; i++)
-		U8(W)[i] = U8(X)[i];
+	mem_copy(W, X, n), U8(W)[n] = 0x80;
 
 	W[14] = 0, W[15] = 8*n;
 	for (u32 i = 0; i < 14; i++)
@@ -79,10 +76,7 @@ void sha2_256(u8* R, const void* X, u32 n) {
 
 void sha2_512(u8* R, const void* X, u32 n) {
 	u64 W[80] = {};
-
-	U8(W)[n] = 0x80;
-	for (u32 i = 0; i < n; i++)
-		U8(W)[i] = U8(X)[i];
+	mem_copy(W, X, n), U8(W)[n] = 0x80;
 
 	W[14] = 0, W[15] = 8*n;
 	for (u32 i = 0; i < 14; i++)
@@ -133,12 +127,8 @@ static inline void sha3_round(u64* H, u32 i) {
 }
 
 void sha3_256(u8* R, const void* X, u32 n) {
-	u8 H[1600/8] = {};
-	for (u32 i = 0; i < n; i++)
-		H[i] = U8(X)[i];
-
-	H[n] ^= 1;
-	H[sizeof(H) - 2*32 - 1] ^= 0x80;
+	u8 H[200] = {}; mem_copy(H, X, n);
+	H[n] ^= 1, H[sizeof(H) - 2*32 - 1] ^= 0x80;
 
 	#pragma unroll
 	for (u32 i = 0; i < 24; i++)
@@ -189,12 +179,8 @@ void sha3_256(u8* R, const void* X, u32 n) {
 
 void ripemd160(u8* R, const void* X, u32 n) {
 	// this is fucking cursed
-	u32 M[16] = {};
-	M[14] = 8*n, M[15] = 0;
-
-	U8(M)[n] = 0x80;
-	for (u32 i = 0; i < n; i++)
-		U8(M)[i] = U8(X)[i];
+	u32 M[16] = {}; M[14] = 8*n, M[15] = 0;
+	mem_copy(M, X, n), U8(M)[n] = 0x80;
 
 	u32 A1 = RIPEMD_IV[0], A2 = A1;
 	u32 B1 = RIPEMD_IV[1], B2 = B1;
