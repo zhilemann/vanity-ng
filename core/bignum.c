@@ -117,6 +117,11 @@ void bn_shrN(bn_mut* R, bn X, u32 n) {
 	R->d[7] = X->d[7] >> n;
 }
 
+void bn_shr8N(bn_mut* R, bn X, u32 n) {
+	mem_copy(R, U8(X)+n, 32-n);
+	mem_copy(U8(R) + 32-n, &BN_0, n);
+}
+
 static void bn_shl32N(bn_mut* R, bn X, u32 n) {
 	for (u32 i = 7; i+1 > n; i--)
 		R->d[i] = X->d[i-n];
@@ -197,11 +202,6 @@ void bn_mul512(bn2_mut* R, bn X, bn Y) {
 		bn1_mut* r = (void*)&R->d[i];
 		r->h += bn_muladd(&r->l, &r->l, X->d[i], Y);
 	}
-}
-
-u32 bn_mul(bn_mut* R, bn X, bn Y) {
-	bn2_mut T; bn_mul512(&T, X, Y);
-	*R = T.l; return bn_cmp(&T.h, &BN_0) != EQ;
 }
 
 void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y) {

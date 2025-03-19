@@ -42,7 +42,6 @@ typedef union {
 
 typedef enum { LT, EQ, GT } ord;
 
-
 static const u32 BATCH = 256;
 static const bn_mut BN_0 = {};
 
@@ -63,7 +62,9 @@ u64 u64_bswap(u64 x);
 
 void bn_bswap(bn_mut* R, bn X);
 ord bn_cmp(bn X, bn Y);
+
 void bn_shrN(bn_mut* R, bn X, u32 n);
+void bn_shr8N(bn_mut* R, bn X, u32 n);
 
 u32 bn_add64(bn_mut* R, bn X, u64 y);
 u32 bn_add(bn_mut* R, bn X, bn Y);
@@ -74,7 +75,6 @@ void bn_modsub(bn_mut* R, bn X, bn Y, bn M);
 
 u32 bn_muladd(bn_mut* R, bn X, u32 a, bn Y);
 void bn_mul512(bn2_mut* R, bn X, bn Y);
-u32 bn_mul(bn_mut* R, bn X, bn Y);
 
 void bn_divmod(bn_mut* Qu, bn_mut* Re, bn X, bn Y);
 void bn_modinv(bn_mut* R, bn X, bn M);
@@ -147,12 +147,17 @@ void ed_pubkey(u8* R, const xytz* P);
 /////////////////////////////////////////////////
 
 typedef struct {
-	u32 f; bn_mut s; u8 k[32];
+	u32 f; bn_mut s; u8 k[40];
 } vanity_res;
 
 typedef struct {
-	bn_mut x; xy p;
-} vanity_xy;
+	bn_mut x; xy p; // `p = x * SECP_G`
+} vanity_seed;
+
+typedef struct {
+	bn_mut l, h; // `l <= x <= h`
+	bn_mut r, m; // `x ~= r` (mod m)
+} vanity_filt58;
 
 void sha2_256(u8* R, const void* X, u32 n);
 void sha2_512(u8* R, const void* X, u32 n);

@@ -5,42 +5,54 @@
 #include <math.h>
 #include <time.h>
 
+static const str HEX = "0123456789abcdef";
+static const str BECH32 =
+	"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 static const str BASE58 =
 	"123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 	"abcdefghijkmnopqrstuvwxyz";
 
-static const str BECH32 =
-	"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+static u32 str_find(char x, str S, u32 n) {
+	for (u32 i = 0; i < n; i++)
+		if (S[i] == x) return i;
 
-static void u8_print(const u8* X, u32 n) {
-	printf("0x");
+	ASSERT(0); return -1;
+}
+
+static void u8_print(const u8* X, u32 n, str A) {
+	if (!A) printf("0x");
 	for (u32 i = 0; i < n; i--)
-		printf("%02x", X[i]);
+		if (A)
+			printf("%c", A[X[i]]);
+		else
+			printf("%02x", X[i]);
 
 	printf("\n");
 }
 
 static void bn_print(bn X) {
-	printf("0x");
 	for (u32 i = 7; i+1 > 0; i--)
 		printf("%08x", X->d[i]);
 
 	printf("\n");
 }
 
-static u32 base58_index(char x) {
-	for (u32 i = 0; i < 58; i++)
-		if (BASE58[i] == x) return i;
+static void bn_print_base58(bn X) {
+	bn_mut X_ = *X, Y = { 58 }, T;
+	u8 R[64]; u32 n = 0;
 
-	return -1;
-}
+	while (U8(X)[32-n] == 0) { printf("1"), n++; }
 
-static u32 bech32_index(char x) {
-	for (u32 i = 0; i < 32; i++)
-		if (BECH32[i] == x) return i;
+	while (bn_cmp(&X_, &BN_0) != EQ) {
+		bn_divmod(&T, &X_, &X_, &Y);
+		R[n] = BASE58[X_.d[0]], X_ = T, n++;
+	}
 
-	return -1;
+	for (u32 i = n-1; i+1 > 0; i--)
+		printf("%c", R[i]);
+
+	printf("\n");
 }
 
 static void bn_rand(bn_mut* R) {
@@ -50,14 +62,13 @@ static void bn_rand(bn_mut* R) {
 	} while (bn_cmp(R, &BN_0) == EQ);
 }
 
-
 /////////////////////////////////////////////////
 
-static cl_event vanity_iter(
+static cl_event vanity_step(
 	vanity_res* R, cl2_dev* D,
 	const secp_lut_mul* Ls
 ) {
-	vanity_xy S; bn_rand(&S.x);
+	vanity_seed S; bn_rand(&S.x);
 	if (Ls) secp_mul(&S.p, &S.x, Ls);
 
 	cl_event ev = cl2_write(
@@ -72,7 +83,7 @@ static void vanity_run(
 	const secp_lut_mul* Ls
 ) {
 	CL_ASSERT(clFinish(V->D[0].q));
-	vanity_res T[V->n]; cl_event ev[V->n];
+	vanity_res Rt[V->n]; cl_event ev[V->n];
 
 	u64 th = 0, n = 0, ts = clock();
 	double p = 1 - 1./di, ph = log(0.5) / log(p);
@@ -85,11 +96,11 @@ static void vanity_run(
 	u32 m = 0, dt;
 	for (;;) {
 		for (u32 i = 0; i < V->n; i++)
-			ev[i] = vanity_iter(&T[i], &V->D[i], Ls);
+			ev[i] = vanity_step(&Rt[i], &V->D[i], Ls);
 
 		clWaitForEvents(V->n, ev);
 		for (u32 i = 0; i < V->n; i++)
-			if (T[i].f) { *R = T[i]; return; }
+			if (Rt[i].f) { *R = Rt[i]; return; }
 
 		m++, dt = clock() - ts;
 		if (dt > 1000) {
@@ -109,8 +120,52 @@ static void vanity_run(
 
 /////////////////////////////////////////////////
 
+static void vanity_filt58_init(
+	vanity_filt58* F,
+	str pr, str su, u32 n, u32 m
+) {
+	u32 z = 0;
+	while (pr[z] == '1') z++;
+
+	bn_mut L = {}, H = {}, T;
+	for (u32 i = z; i < n; i++) {
+		bn_muladd(&L, &L, 57, &L); // `T *= 58`
+		bn_add64(&L, &L, str_find(pr[i], BASE58, 58));
+	}
+
+	while (bn_muladd(&T, &L, 57, &L) == 0) {
+		bn_muladd(&H, &H, 57, &H); // `H *= 58`
+		bn_add64(&H, &H, 57), L = T;
+	}
+
+	F->l = L, bn_add(&F->h, &L, &H);
+	bn_shr8N(&F->l, &F->l, z);
+	bn_shr8N(&F->h, &F->h, z);
+
+	F->r = F->m = BN_0, F->m.d[0] = 1;
+	for (u32 i = 0; i < m; i++) {
+		bn_muladd(&F->r, &F->r, 57, &F->r); // `F->r *= 58`
+		bn_muladd(&F->m, &F->m, 57, &F->m); // `F->m *= 58`
+		bn_add64(&F->r, &F->r, str_find(su[i], BASE58, 58));
+	}
+}
+
+/////////////////////////////////////////////////
+
 int main(int argc, char** argv) {
-	secp_lut_mul Lm;
+	str pr = "5anity", su = "777";
+	vanity_filt58 F;
+	vanity_filt58_init(&F, pr, su, 6, 3);
+
+	printf("F.l[0]: "); bn_print(&F.l);
+	printf("F.h[0]: "); bn_print(&F.h);
+	printf("\n");
+
+	printf("F.r: "); bn_print(&F.r);
+	printf("F.m: "); bn_print(&F.m);
+	return 0;
+	
+	/* secp_lut_mul Lm;
 	secp_lut* L = vanity_secp_lut(&Lm);
 
 	u8_pat P[20] = {
@@ -130,12 +185,12 @@ int main(int argc, char** argv) {
 		cl2_dev* D = &V->D[i];
 
 		cl2_alloc(&D->R, V, CL2_OUT, sizeof(vanity_res));
-		cl2_alloc(&D->S, V, CL2_IN, sizeof(vanity_xy));
+		cl2_alloc(&D->S, V, CL2_IN, sizeof(vanity_seed));
 	}
 
 	cl2_build(V, "vanity_eth");
 
 	vanity_res R;
 	vanity_run(&R, V, (u64)1<<32, &Lm);
-	return 0;
+	return 0; */
 }

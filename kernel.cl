@@ -9,36 +9,19 @@ static u32 vanity_id() {
 	return x;
 }
 
-kernel void vanity_btc_bech32(
-	global vanity_res* R,
-	global const vanity_xy* S,
-	global const u8_pat* F,
-	global const secp_lut* L
-) {
-	if (R->f) return;
+static u32 vanity_filt_test(bn X, const vanity_filt58* F) {
+	if (
+		bn_cmp(&F->l, X) == GT ||
+		bn_cmp(X, &F->h) == GT
+	) return 0;
 
-	u32 id = vanity_id(); xy P[N];
-	if (!secp_addN(P, &S->p, L->d + N*id, N))
-		return;
-
-	for (u32 i = 0; i < N; i++) {
-		if (R->f) return;
-
-		u8 T[38]; secp_pubkey33(T, &P[i]);
-		sha2_256(T, T, 33), ripemd160(T, T, 32);
-		u8_base32(T, T, 20), bech32(T+32, T, "bc", 0);
-
-		if (u8_pat_test(T, F, 38))
-			if (atomic_inc(&R->f) == 0) {
-				bn_add64(&R->s, &S->x, N*id + i);
-				mem_copy(R->k, T, 32);
-			}
-	}
+	bn_mut _, R; bn_divmod(&_, &R, X, &F->m);
+	return bn_cmp(&R, &F->r) == EQ;
 }
 
 kernel void vanity_eth(
 	global vanity_res* R,
-	global const vanity_xy* S,
+	global const vanity_seed* S,
 	global const u8_pat* F,
 	global const secp_lut* L
 ) {
@@ -51,51 +34,109 @@ kernel void vanity_eth(
 	for (u32 i = 0; i < N; i++) {
 		if (R->f) return;
 
-		u8 T[64]; secp_pubkey64(T, &P[i]);
-		sha3_256(T, T, 64);
+		u8 K[64]; secp_pubkey64(K, &P[i]);
+		sha3_256(K, K, 64);
 
-		if (u8_pat_test(T+12, F, 20))
-			if (atomic_inc(&R->f) == 0) {
-				bn_add64(&R->s, &S->x, N*id + i + 1);
-				mem_copy(R->k, T+12, 20);
-			}
+		if (!u8_pat_test(K+12, F, 20)) continue;
+
+		if (atomic_inc(&R->f) == 0) {
+			bn_add64(&R->s, &S->x, N*id + i+1);
+			mem_copy(R->k, K+12, 20);
+		}
 	}
 }
 
-/* kernel void vanity_solana(
+kernel void vanity_btc_base58(
+	global vanity_res* R,
+	global const vanity_seed* S,
+	global const vanity_filt58* F,
+	global const secp_lut* L
+) {
+	if (R->f) return;
+
+	u32 id = vanity_id(); xy P[N];
+	if (!secp_addN(P, &S->p, L->d + N*id, N))
+		return;
+
+	union { u8 u8[38]; bn_mut bn; } K;
+	for (u32 i = 0; i < N; i++) {
+		if (R->f) return;
+
+		secp_pubkey33(K.u8, &P[i]);
+		sha2_256(K.u8, K.u8, 33);
+		ripemd160(K.u8+8, K.u8, 32);
+
+		u8 T[32]; sha2_256(T, K.u8+8, 20);
+		sha2_256(T, T, 32);
+
+		mem_copy(K.u8, &BN_0, 8);
+		mem_copy(K.u8+28, T, 4);
+		bn_bswap(&K.bn, &K.bn);
+
+		if (!vanity_filt_test(&K.bn, F)) continue;
+
+		if (atomic_inc(&R->f) == 0) {
+			bn_add64(&R->s, &S->x, N*id + i+1);
+			mem_copy(R->k, &K.bn, sizeof(K.bn));
+		}
+	}
+}
+
+kernel void vanity_btc_bech32(
+	global vanity_res* R,
+	global const vanity_seed* S,
+	global const u8_pat* F,
+	global const secp_lut* L
+) {
+	if (R->f) return;
+
+	u32 id = vanity_id(); xy P[N];
+	if (!secp_addN(P, &S->p, L->d + N*id, N))
+		return;
+
+	for (u32 i = 0; i < N; i++) {
+		if (R->f) return;
+
+		u8 K[38]; secp_pubkey33(K, &P[i]);
+		sha2_256(K, K, 33), ripemd160(K, K, 32);
+		u8_base32(K, K, 20), bech32(K+32, K, "bc", 0);
+
+		if (!u8_pat_test(K, F, 38)) continue;
+
+		if (atomic_inc(&R->f) == 0) {
+			bn_add64(&R->s, &S->x, N*id + i+1);
+			mem_copy(R->k, K, 38);
+		}
+	}
+}
+
+kernel void vanity_solana(
 	global vanity_res* R,
 	global const bn_mut* S,
-	global const vanity_filt* F,
+	global const vanity_filt58* F,
 	global const ed_lut* L
 ) {
 	if (R->f) return;
 
-	u32 a = vanity_id(0);
-
-	const u32 N = 256;
-	bn_mut Ss[N], K; xytz P[N];
+	u32 id = vanity_id();
+	bn_mut K; xytz P[N];
 
 	for (u32 i = 0; i < N; i++) {
-		bn_muladd(&Ss[i], S, N*a+i, S);
-		ed_privkey(&K, U8(&Ss[i]));
+		bn_muladd(&K, S, N*id + i, S);
+		ed_privkey(&K, U8(&K));
 		ed_mul(&P[i], &K, L);
 	}
 
 	ed_normN(P, P, N);
 	for (u32 i = 0; i < N; i++) {
 		if (R->f) return;
-		ed_pubkey(&K, &P[i]);
 
-		if (bn_cmp(&F->l, &K) == GT) continue;
-		if (bn_cmp(&K, &F->h) == GT) continue;
+		ed_pubkey(U8(&K), &P[i]);
+		if (!vanity_filt_test(&K, F)) continue;
 
-		bn_mut _, Rm;
-		bn_divmod(&_, &Rm, &K, &F->m);
-
-		if (bn_cmp(&Rm, &F->r) != EQ)
-			continue;
-
-		if (atomic_inc(&R->f) == 0)
-			R->s = Ss[i], R->k = K;
+		if (atomic_inc(&R->f) == 0) {
+			bn_muladd(&R->s, S, N*id + i, S);
+			mem_copy(&R->k, &K, sizeof(K));
+		}
 	}
-} */
+}
