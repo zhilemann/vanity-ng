@@ -9,6 +9,8 @@
 	typedef ulong u64;
 #else
 	#include <stdint.h>
+	#include <inttypes.h>
+
 	#define global
 	#define constant
 

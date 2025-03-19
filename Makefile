@@ -1,7 +1,7 @@
 all: build/vanitygen2
 
-build/vanitygen2: core/* build/kernel.c *.c
-	$(CC) $(filter %.c,$^) -O2 -march=native -lOpenCL -o $@
+build/vanitygen2: core/*.h core/*.c build/kernel.cl *.c 
+	$(CC) $(filter %.c, $^) -Wall -lOpencl -O2 -march=native -lOpenCL -o $@
 
-build/kernel.c: core/*.h core/*.c kernel.cl
-	cat $^ | sed /#include/d | xxd -i -n KERNEL > $@
+build/kernel.cl: core/*.h core/*.c kernel.cl
+	cat $^ | sed /#include/d | tr '\t' ' ' > $@

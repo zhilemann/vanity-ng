@@ -73,9 +73,10 @@ void bn_bswap(bn_mut* R, bn X) {
 }
 
 static u32 bn_width(bn X) {
-	u32 n = 7;
-	while (X->d[n] == 0) n--;
-	return n;
+	for (u32 n = 7; n+1 > 0; n--)
+		if (X->d[n] != 0) return n;
+
+	return 0;
 }
 
 u64 bn_get64(bn X, u32 i) {
@@ -239,7 +240,7 @@ static void bn_modinv_step(bn1_mut* A, bn_mut* X, bn M) {
 void bn_modinv(bn_mut* R, bn X, bn M) {
 	// see Handbook of Applied Cryptography, 14.61
 	bn_mut X_ = *X, Y = *M;
-	bn1_mut A = { 1 }, B = {};
+	bn1_mut A = { { 1 } }, B = {};
 
 	while (bn_cmp(&X_, &BN_0) != EQ) {
 		bn_modinv_step(&A, &X_, M);

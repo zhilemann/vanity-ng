@@ -277,7 +277,7 @@ void ed_mul(xytz* R, bn X, const ed_lut* L) {
 /////////////////////////////////////////////////
 
 void secp_pubkey33(u8* R, const xy* P) {
-	R[0] = 2 + P->y.d[0] & 1;
+	R[0] = 2 + (P->y.d[0] & 1);
 	bn_bswap(BN(R+1), &P->x);
 }
 

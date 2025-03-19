@@ -5,6 +5,25 @@
 #include <CL/cl.h>
 #include <stdio.h>
 
+#ifdef WIN32
+	#define INCBIN_SEC ".rdata, \"dr\""
+#else
+	#define INCBIN_SEC ".rodata"
+#endif
+
+#define INCBIN(var, fp) \
+	asm ( \
+		".section " INCBIN_SEC ";" \
+		".global " #var "_start;" \
+		".global " #var "_end;" \
+		#var "_start: .incbin \"" fp "\";" \
+		#var "_end:" \
+	); \
+	extern const u8 var##_start[]; \
+	extern const u8 var##_end[]
+
+/////////////////////////////////////////////////
+
 typedef const char* str;
 
 typedef struct { u32 n; cl_mem d; } cl2_buf;
@@ -13,16 +32,14 @@ typedef struct {
 	cl_device_id id;
 	cl_command_queue q;
 
-	cl_kernel k;
-	cl2_buf R, S;
-	u32 cu, wg;
+	cl2_buf R, S, F, L;
+	cl_kernel k; u32 cu, wg;
 } cl2_dev;
 
 typedef struct {
 	cl_context cl;
 	cl_program pr;
 
-	cl2_buf F, L;
 	u32 n; cl2_dev D[];
 } cl2_ctx;
 
@@ -31,9 +48,6 @@ typedef struct {
 
 #define ASSERT(x) __assert(__WHERE(), #x, (u64)(x))
 #define CL_ASSERT(x) __cl_assert(__WHERE(), #x, x)
-
-extern unsigned char KERNEL[];
-extern unsigned int KERNEL_len;
 
 static const cl_mem_flags CL2_IN =
 	CL_MEM_READ_ONLY | CL_MEM_HOST_WRITE_ONLY;
@@ -44,10 +58,10 @@ static const cl_mem_flags CL2_OUT =
 void __assert(str fp, u32 ln, str ex, u64 x);
 void __cl_assert(str fp, u32 ln, str ex, u32 x);
 
+/////////////////////////////////////////////////
+
 cl2_ctx* cl2_open();
 void cl2_close(cl2_ctx* V);
-
-void cl2_build(cl2_ctx* V, str ke);
 
 void cl2_alloc(
 	cl2_buf* R, cl2_ctx* V,
@@ -61,13 +75,17 @@ cl_event cl2_write(
 	cl2_buf* R, cl2_dev* D,
 	const void* X, cl_event ev);
 
+void cl2_setup(
+	cl2_ctx* V, u32 s,
+	const void* F, u32 f,
+	const void* L, u32 l);
+
 cl_event cl2_dispatch2(
 	cl2_dev* D,
 	u32 gl_x, u32 gl_y,
 	u32 lo_x, u32 lo_y,
 	cl_event ev);
 
-secp_lut* vanity_secp_lut(secp_lut_mul* Lm);
-ed_lut* vanity_ed_lut();
+void cl2_build(cl2_ctx* V, str ke);
 
 #endif

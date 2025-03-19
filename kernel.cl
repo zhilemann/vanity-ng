@@ -9,7 +9,7 @@ static u32 vanity_id() {
 	return x;
 }
 
-u32 bn_filt58_test(bn X, const bn_filt58* F) {
+static u32 bn_filt58_test(bn X, const bn_filt58* F) {
 	if (bn_cmp(&F->l, X) == GT) return 0;
 	if (bn_cmp(X, &F->h) == GT) return 0;
 
@@ -56,26 +56,21 @@ kernel void vanity_btc_base58(
 	if (!secp_addN(P, &S->p, L->d + N*id, N))
 		return;
 
-	union { u8 u8[38]; bn_mut bn; } K;
+	u8 K[33], T[32];
 	for (u32 i = 0; i < N; i++) {
 		if (R->f) return;
 
-		secp_pubkey33(K.u8, &P[i]);
-		sha2_256(K.u8, K.u8, 33);
-		ripemd160(K.u8+8, K.u8, 32);
+		secp_pubkey33(K, &P[i]), sha2_256(K, K, 33);
+		ripemd160(K+8, K, 32), mem_copy(K, &BN_0, 8);
 
-		u8 T[32]; sha2_256(T, K.u8+8, 20);
-		sha2_256(T, T, 32);
+		sha2_256(T, K+7, 21), sha2_256(T, T, 32);
+		mem_copy(K+28, T, 4), bn_bswap(BN(&K), BN(&K));
 
-		mem_copy(K.u8, &BN_0, 8);
-		mem_copy(K.u8+28, T, 4);
-		bn_bswap(&K.bn, &K.bn);
-
-		if (!bn_filt58_test(&K.bn, F)) continue;
+		if (!bn_filt58_test(BN(&K), F)) continue;
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_add64(&R->s, &S->x, N*id + i+1);
-			R->k.bn = K.bn;
+			mem_copy(R->k.u8, K, 25);
 		}
 	}
 }

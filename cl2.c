@@ -1,4 +1,5 @@
 #include "cl2.h"
+#include <CL/cl.h>
 
 #define clCreateCommandQueue(cl, d, e) \
 	clCreateCommandQueueWithProperties(cl, d, NULL, e)
@@ -20,6 +21,8 @@ void __cl_assert(str fp, u32 ln, str ex, u32 x) {
 
 	exit(x);
 }
+
+INCBIN(KERNEL, "build/kernel.cl");
 
 static u32 cl2_cu_count(cl_platform_id P) {
 	u32 n, m = 0, t;
@@ -55,22 +58,6 @@ static cl_platform_id cl2_best_platform() {
 	}
 
 	ASSERT(R); return R;
-}
-
-static u32 vanity_read(str fp, void* R, u32 n) {
-	FILE* F = fopen(fp, "rb");
-	if (!F) return 0;
-
-	u32 r = fread(R, n, 1, F);
-	fclose(F); return r;
-}
-
-static u32 vanity_write(str fp, const void* X, u32 n) {
-	FILE* F = fopen(fp, "wb");
-	if (!F) return 0;
-
-	u32 r = fwrite(X, n, 1, F);
-	fclose(F); return r;
 }
 
 /////////////////////////////////////////////////
@@ -111,83 +98,18 @@ void cl2_close(cl2_ctx* V) {
 
 		CL_ASSERT(clReleaseDevice(D->id));
 		CL_ASSERT(clReleaseCommandQueue(D->q));
-
 		CL_ASSERT(clReleaseKernel(D->k));
+
 		CL_ASSERT(clReleaseMemObject(D->R.d));
 		CL_ASSERT(clReleaseMemObject(D->S.d));
+		CL_ASSERT(clReleaseMemObject(D->F.d));
+		CL_ASSERT(clReleaseMemObject(D->L.d));
 	}
 
 	CL_ASSERT(clReleaseContext(V->cl));
 	CL_ASSERT(clReleaseProgram(V->pr));
 
-	CL_ASSERT(clReleaseMemObject(V->F.d));
-	CL_ASSERT(clReleaseMemObject(V->L.d));
-
 	free(V);
-}
-
-/////////////////////////////////////////////////
-
-static void cl2_build_log(cl_program P, cl_device_id D) {
-	u64 n, m;
-	CL_ASSERT(clGetDeviceInfo(
-		D, CL_DEVICE_NAME, 0, NULL, &n));
-	CL_ASSERT(clGetProgramBuildInfo(
-		P, D, CL_PROGRAM_BUILD_LOG, 0, NULL, &m));
-
-	u8 *a = malloc(n), *b = malloc(m);
-	CL_ASSERT(clGetDeviceInfo(
-		D, CL_DEVICE_NAME, n, a, NULL));
-	CL_ASSERT(clGetProgramBuildInfo(
-		P, D, CL_PROGRAM_BUILD_LOG, m, b, NULL));
-
-	VANITY_LOG("\nbuild log from %s:\n%s", a, b);
-	free(a), free(b);
-}
-
-static void cl2_kernel(cl2_ctx* V, str ke) {
-	cl_int e; cl_kernel K; u64 n;
-	K = clCreateKernel(V->pr, ke, &e), CL_ASSERT(e);
-
-	CL2_set_arg(K, 2, &V->F.d);
-	CL2_set_arg(K, 3, &V->L.d);
-
-	for (u32 i = 0; i < V->n; i++) {
-		cl2_dev* D = &V->D[i];
-		D->k = clCloneKernel(K, &e), CL_ASSERT(e);
-
-		CL2_set_arg(D->k, 0, &D->R.d);
-		CL2_set_arg(D->k, 1, &D->S.d);
-
-		CL_ASSERT(clGetKernelWorkGroupInfo(
-			D->k, D->id, CL_KERNEL_WORK_GROUP_SIZE,
-			sizeof(n), &n, NULL));
-
-		D->wg = n;
-	}
-
-	clReleaseKernel(K);
-}
-
-void cl2_build(cl2_ctx* V, str ke) {
-	str src = (char*)KERNEL;
-	u64 n = KERNEL_len; cl_int e;
-
-	V->pr = clCreateProgramWithSource(
-		V->cl, 1, &src, &n, &e);
-
-	CL_ASSERT(e);
-	for (u32 i = 0; i < V->n; i++) {
-		cl_device_id D = V->D[i].id;
-		e = clBuildProgram(V->pr, 1, &D, NULL, NULL, NULL);
-
-		if (e == CL_BUILD_PROGRAM_FAILURE)
-			cl2_build_log(V->pr, D);
-
-		CL_ASSERT(e);
-	}
-
-	cl2_kernel(V, ke);
 }
 
 /////////////////////////////////////////////////
@@ -229,6 +151,27 @@ cl_event cl2_write(
 	return ev1;
 }
 
+void cl2_setup(
+	cl2_ctx* V, u32 s,
+	const void* F, u32 f,
+	const void* L, u32 l
+) {
+	cl_event ev[2*V->n];
+	for (u32 i = 0; i < V->n; i++) {
+		cl2_dev* D = &V->D[i];
+
+		cl2_alloc(&D->R, V, CL2_OUT, sizeof(vanity_res));
+		cl2_alloc(&D->S, V, CL2_IN, s);
+		cl2_alloc(&D->F, V, CL2_IN, f);
+		cl2_alloc(&D->L, V, CL2_IN, l);
+
+		ev[2*i] = cl2_write(&D->F, D, F, NULL);
+		ev[2*i+1] = cl2_write(&D->L, D, L, NULL);
+	}
+
+	clWaitForEvents(2*V->n, ev);
+}
+
 cl_event cl2_dispatch2(
 	cl2_dev* D,
 	u32 gl_x, u32 gl_y,
@@ -248,54 +191,64 @@ cl_event cl2_dispatch2(
 
 /////////////////////////////////////////////////
 
-secp_lut* vanity_secp_lut(secp_lut_mul* Lm) {
-	str LUT_FILE = "secp256k1.lut";
+static void cl2_build_log(cl_program P, cl_device_id D) {
+	u64 n, m;
+	CL_ASSERT(clGetDeviceInfo(
+		D, CL_DEVICE_NAME, 0, NULL, &n));
+	CL_ASSERT(clGetProgramBuildInfo(
+		P, D, CL_PROGRAM_BUILD_LOG, 0, NULL, &m));
 
-	Lm->d[0] = SECP_G;
-	for (u32 i = 1; i < 256; i++) {
-		xy* P = Lm->d + i;
-		secp_addN(P, P-1, P-1, 1);
-	}
+	u8 *a = malloc(n), *b = malloc(m);
+	CL_ASSERT(clGetDeviceInfo(
+		D, CL_DEVICE_NAME, n, a, NULL));
+	CL_ASSERT(clGetProgramBuildInfo(
+		P, D, CL_PROGRAM_BUILD_LOG, m, b, NULL));
 
-	secp_lut* L = malloc(sizeof(secp_lut));
-	if (!vanity_read(LUT_FILE, L, sizeof(secp_lut))) {
-		L->d[0] = SECP_G;
-		for (u32 i = 0; i < 24; i++) {
-			VANITY_LOG(
-				"\r* build %s: %u/%u",
-				LUT_FILE, 1<<i, 1<<24);
-
-			xy* P = L->d + (1<<i);
-			secp_addN(P, P-1, L->d, 1<<i);
-		}
-
-		ASSERT(vanity_write(LUT_FILE, L, sizeof(secp_lut)));
-		VANITY_LOG("\r* build %s: OK\33[K\n", LUT_FILE);
-	}
-
-	return L;
+	VANITY_LOG("\nbuild log from %s:\n%s", a, b);
+	free(a), free(b);
 }
 
-ed_lut* vanity_ed_lut() {
-	str LUT_FILE = "Ed25519.lut";
+static void cl2_kernel(cl2_ctx* V, str ke) {
+	cl_kernel K; cl_int e; u64 n;
+	K = clCreateKernel(V->pr, ke, &e), CL_ASSERT(e);
 
-	ed_lut* L = malloc(sizeof(ed_lut));
-	if (!vanity_read(LUT_FILE, L, sizeof(ed_lut))) {
-		xy2d* P; xytz G = ED_G;
-		for (u32 i = 0; i < 12; i++) {
-			VANITY_LOG(
-				"\r* build %s: %u/256", LUT_FILE,
-				i < 8 ? 21*i : (22*i - 8));
+	for (u32 i = 0; i < V->n; i++) {
+		cl2_dev* D = &V->D[i];
+		D->k = clCloneKernel(K, &e), CL_ASSERT(e);
 
-			ed_lut_step(
-				i < 8 ? L->a[i] : L->b[i-8], &G,
-				i < 8 ? 1<<21 : 1<<22);
-		}
+		CL2_set_arg(D->k, 0, &D->R.d);
+		CL2_set_arg(D->k, 1, &D->S.d);
+		CL2_set_arg(D->k, 2, &D->F.d);
+		CL2_set_arg(D->k, 3, &D->L.d);
 
-		ASSERT(vanity_write(LUT_FILE, L, sizeof(ed_lut)));
-		VANITY_LOG("\r* build %s: OK\33[K\n", LUT_FILE);
+		CL_ASSERT(clGetKernelWorkGroupInfo(
+			D->k, D->id, CL_KERNEL_WORK_GROUP_SIZE,
+			sizeof(n), &n, NULL));
+
+		D->wg = n;
 	}
 
-	return L;
+	clReleaseKernel(K);
 }
 
+void cl2_build(cl2_ctx* V, str ke) {
+	str src = (char*)KERNEL_start;
+	u64 n = (u64)KERNEL_end - (u64)KERNEL_start;
+
+	cl_int e;
+	V->pr = clCreateProgramWithSource(
+		V->cl, 1, &src, &n, &e);
+
+	CL_ASSERT(e);
+	for (u32 i = 0; i < V->n; i++) {
+		cl_device_id D = V->D[i].id;
+		e = clBuildProgram(V->pr, 1, &D, NULL, NULL, NULL);
+
+		if (e == CL_BUILD_PROGRAM_FAILURE)
+			cl2_build_log(V->pr, D);
+
+		CL_ASSERT(e);
+	}
+
+	cl2_kernel(V, ke);
+}
