@@ -1,11 +1,11 @@
-#if !defined(CL2_H)
-#define CL2_H
+#if !defined(VANITY_H)
+#define VANITY_H
 
 #include "core/core.h"
 #include <CL/cl.h>
 #include <stdio.h>
 
-#ifdef WIN32
+#if !defined(WIN32)
 	#define INCBIN_SEC ".rdata, \"dr\""
 #else
 	#define INCBIN_SEC ".rodata"
@@ -25,7 +25,6 @@
 /////////////////////////////////////////////////
 
 typedef const char* str;
-
 typedef struct { u32 n; cl_mem d; } cl2_buf;
 
 typedef struct {
@@ -58,6 +57,14 @@ static const cl_mem_flags CL2_OUT =
 void __assert(str fp, u32 ln, str ex, u64 x);
 void __cl_assert(str fp, u32 ln, str ex, u32 x);
 
+void bn_rand(bn_mut* R);
+
+void u8_print(const u8* X, u32 n);
+void u8_print_bech32(const u8* X, u32 n);
+
+void bn_print(bn X);
+void bn_print_base58(bn X, u32 z);
+
 /////////////////////////////////////////////////
 
 cl2_ctx* cl2_open();
@@ -87,5 +94,15 @@ cl_event cl2_dispatch2(
 	cl_event ev);
 
 void cl2_build(cl2_ctx* V, str ke);
+
+/////////////////////////////////////////////////
+
+secp_lut* vanity_secp_lut(secp_lut_mul* Lm);
+ed_lut* vanity_ed_lut();
+
+u64 u8_pat_eth(u8_pat* R, str pr, str su);
+u64 u8_pat_bech32(u8_pat* R, str pr, str su);
+
+u64 bn_filt58_init(bn_filt58* F, str pr, u32 z, str su);
 
 #endif

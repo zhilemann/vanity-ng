@@ -1,38 +1,28 @@
 #include "core.h"
 
-typedef struct PACKED { u32 a; u8 b; } base32_40;
-
 void mem_copy(void* R, const void* X, u32 n) {
 	for (u32 i = 0; i < n; i++)
 		U8(R)[i] = U8(X)[i];
 }
 
-u32 u8_pat_test(const u8* X, const u8_pat* P, u32 n) {
-	u32 r = 1;
-	for (u32 i = 0; i < n; i++)
-		r &= (X[i] & P[i].m) == P[i].b;
-
-	return r;
-}
-
 void u8_base32(u8* R, const u8* X, u32 n) {
 	for (u32 i = n/5 - 1; i+1 > 0; i--) {
-		u8* r = R + 8*i;
+		u32 a = u32_bswap(*U32(X + 5*i));
+		u8 b = X[5*i + 4], *r = R + 8*i;
 
-		base32_40 x = *(base32_40*)(X + 5*i);
-		x.a = u32_bswap(x.a);
+		r[0] = a >> 27, r[1] = a >> 22 % 32;
+		r[2] = a >> 17, r[3] = a >> 12;
 
-		r[0] = x.a >> 27, r[1] = x.a >> 22;
-		r[2] = x.a >> 17, r[3] = x.a >> 12;
+		r[4] = a >> 7, r[5] = a >> 2;
+		r[6] = a << 3 | b >> 5, r[7] = b;
 
-		r[4] = x.a >> 7, r[5] = x.a >> 2;
-		r[6] = x.a<<3 | x.b>>5, r[7] = x.b;
+		for (u32 j = 0; j < 8; j++) r[j] %= 32;
 	}
 }
 
 u32 u32_bswap(u32 x) {
 	// `x = 0xaabbccdd`
-	u32 A = 0xff00ff00;
+	const u32 A = 0xff00ff00;
 	// `x = 0xbbaaddcc`
 	x = (x<<8 & A) | (x>>8 & ~A);
 	// `x = 0xddccbbaa`
@@ -41,8 +31,8 @@ u32 u32_bswap(u32 x) {
 
 u64 u64_bswap(u64 x) {
 	// `x = 0xaabbccddeeffgghh`
-	u64 A = 0xff00ff00ff00ff00;
-	u64 B = 0xffff0000ffff0000;
+	const u64 A = 0xff00ff00ff00ff00;
+	const u64 B = 0xffff0000ffff0000;
 
 	// `x = 0xbbaaddccffeehhgg`
 	x = (x<<8 & A) | (x>>8 & ~A);

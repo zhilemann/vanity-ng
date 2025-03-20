@@ -220,7 +220,7 @@ void ripemd160(u8* R, const void* X, u32 n) {
 
 static u32 bech32_add(u32 h, u8 x) {
 	u8 b = h >> 25;
-	h = (h % (1<<25)) << 5 ^ (x%32);
+	h = (h % (1<<25)) << 5 ^ x;
 
 	for (u32 i = 0; i < 5; i++)
 		if (b>>i & 1) { h ^= BECH32_GEN[i]; }
@@ -235,8 +235,8 @@ void bech32(u8* R, u8* X, constant char hr[2], u8 wi) {
 	h = bech32_add(h, hr[1] >> 5);
 	h = bech32_add(h, 0);
 
-	h = bech32_add(h, hr[0]);
-	h = bech32_add(h, hr[1]);
+	h = bech32_add(h, hr[0] % 32);
+	h = bech32_add(h, hr[1] % 32);
 	h = bech32_add(h, wi);
 
 	for (u32 i = 0; i < 32; i++)

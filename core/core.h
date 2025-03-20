@@ -26,8 +26,6 @@
 #define U64(x) ((u64*)(x))
 #define BN(x) ((bn_mut*)(x))
 
-typedef struct { u8 b, m; } u8_pat;
-
 typedef struct { u32 d[8]; } bn_mut;
 typedef const bn_mut* bn;
 
@@ -57,10 +55,8 @@ static const bn_mut BN_0 = {};
 
 void mem_copy(void* R, const void* X, u32 n);
 void u8_base32(u8* R, const u8* X, u32 n);
-u32 u8_pat_test(const u8* X, const u8_pat* P, u32 n);
 
-u32 u32_bswap(u32 x);
-u64 u64_bswap(u64 x);
+u32 u32_bswap(u32 x); u64 u64_bswap(u64 x);
 
 void bn_neg(bn_mut* R, bn X);
 void bn_bswap(bn_mut* R, bn X);
@@ -157,6 +153,8 @@ typedef struct {
 typedef struct {
 	bn_mut x; xy p; // `p = x * SECP_G`
 } secp_seed;
+
+typedef struct { u8 b, m; } u8_pat;
 
 typedef struct {
 	bn_mut l, h; // `l <= x <= h`

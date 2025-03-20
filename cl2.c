@@ -1,5 +1,4 @@
-#include "cl2.h"
-#include <CL/cl.h>
+#include "vanity.h"
 
 #define clCreateCommandQueue(cl, d, e) \
 	clCreateCommandQueueWithProperties(cl, d, NULL, e)

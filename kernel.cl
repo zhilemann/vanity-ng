@@ -3,10 +3,21 @@
 static const u32 N = BATCH;
 
 static u32 vanity_id() {
-	u32 x = get_global_id(0);
-	x *= get_global_size(1);
-	x += get_global_id(1);
+	u32 x = get_global_id(1);
+	x *= get_global_size(0);
+	x += get_global_id(0);
 	return x;
+}
+
+u32 u8_pat_test(
+	const u8* X,
+	const u8_pat* P, u32 n
+) {
+	u32 r = 1;
+	for (u32 i = 0; i < n; i++)
+		r &= (X[i] & P[i].m) == P[i].b;
+
+	return r;
 }
 
 static u32 bn_filt58_test(bn X, const bn_filt58* F) {
@@ -20,7 +31,7 @@ static u32 bn_filt58_test(bn X, const bn_filt58* F) {
 kernel void vanity_eth(
 	global vanity_res* R,
 	global const secp_seed* S,
-	global const u8_pat* F,
+	global const u8_pat* Pa,
 	global const secp_lut* L
 ) {
 	if (R->f) return;
@@ -35,7 +46,7 @@ kernel void vanity_eth(
 		u8 K[64]; secp_pubkey64(K, &P[i]);
 		sha3_256(K, K, 64);
 
-		if (!u8_pat_test(K+12, F, 20)) continue;
+		if (!u8_pat_test(K+12, Pa, 20)) continue;
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_add64(&R->s, &S->x, N*id + i+1);
@@ -78,7 +89,7 @@ kernel void vanity_btc_base58(
 kernel void vanity_btc_bech32(
 	global vanity_res* R,
 	global const secp_seed* S,
-	global const u8_pat* F,
+	global const u8_pat* Pa,
 	global const secp_lut* L
 ) {
 	if (R->f) return;
@@ -94,7 +105,7 @@ kernel void vanity_btc_bech32(
 		sha2_256(K, K, 33), ripemd160(K, K, 32);
 		u8_base32(K, K, 20), bech32(K+32, K, "bc", 0);
 
-		if (!u8_pat_test(K, F, 38)) continue;
+		if (!u8_pat_test(K, Pa, 38)) continue;
 
 		if (atomic_inc(&R->f) == 0) {
 			bn_add64(&R->s, &S->x, N*id + i+1);
