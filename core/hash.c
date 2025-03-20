@@ -4,8 +4,8 @@
 #define S1(x, a, b, c) (ROR(x,a) ^ ROR(x,b) ^ (x>>c))
 #define S2(x, a, b, c) (ROR(x,a) ^ ROR(x,b) ^ ROR(x,c))
 
-#define Ma(x, y, z) ((x)&(y) ^ (x)&(z) ^ (y)&(z))
-#define Ch(x, y, z) ((x)&(y) ^ ~(x)&(z))
+#define Ma(x, y, z) (((x)&(y)) ^ ((x)&(z)) ^ ((y)&(z)))
+#define Ch(x, y, z) (((x)&(y)) ^ (~(x)&(z)))
 
 #define SHA2_init(ty, IV) \
 	ty A = IV[0], B = IV[1], C = IV[2], D = IV[3]; \
@@ -20,13 +20,15 @@
 	ro(E, F, G, &H, A, B, C, &D, K[i+4], W[i+4]); \
 	ro(D, E, F, &G, H, A, B, &C, K[i+5], W[i+5]); \
 	ro(C, D, E, &F, G, H, A, &B, K[i+6], W[i+6]); \
-	ro(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); }
+	ro(B, C, D, &E, F, G, H, &A, K[i+7], W[i+7]); \
+}
 
 #define SHA2_add(ty, R, sw, IV) { \
 	ty(R)[0] = sw(A + IV[0]), ty(R)[1] = sw(B + IV[1]); \
 	ty(R)[2] = sw(C + IV[2]), ty(R)[3] = sw(D + IV[3]); \
 	ty(R)[4] = sw(E + IV[4]), ty(R)[5] = sw(F + IV[5]); \
-	ty(R)[6] = sw(G + IV[6]), ty(R)[7] = sw(H + IV[7]); }
+	ty(R)[6] = sw(G + IV[6]), ty(R)[7] = sw(H + IV[7]); \
+}
 
 static inline void sha256_round(
 	u32 A, u32 B, u32 C, u32* D,
@@ -142,38 +144,46 @@ void sha3_256(u8* R, const void* X, u32 n) {
 
 #define RIPEMD_step1(A, B, C, D, E, i, f) { \
 	A += f(B, C, D) + M[RIPEMD_I1[i]] + RIPEMD_K1[(i)/16]; \
-	A = ROL(A, RIPEMD_R1[i]) + E, C = ROL(C, 10); }
+	A = ROL(A, RIPEMD_R1[i]) + E, C = ROL(C, 10); \
+}
 
 #define RIPEMD_step2(A, B, C, D, E, i, f) { \
 	A += f(B, C, D) + M[RIPEMD_I2[i]] + RIPEMD_K2[(i)/16]; \
-	A = ROL(A, RIPEMD_R2[i]) + E, C = ROL(C, 10); }
+	A = ROL(A, RIPEMD_R2[i]) + E, C = ROL(C, 10); \
+}
 
 #define RIPEMD_round1(i, f1, f2) { \
 	RIPEMD_step1(A1, B1, C1, D1, E1, i, f1); \
-	RIPEMD_step2(A2, B2, C2, D2, E2, i, f2); }
+	RIPEMD_step2(A2, B2, C2, D2, E2, i, f2); \
+}
 
 #define RIPEMD_round2(i, f1, f2) { \
 	RIPEMD_step1(E1, A1, B1, C1, D1, i, f1); \
-	RIPEMD_step2(E2, A2, B2, C2, D2, i, f2); }
+	RIPEMD_step2(E2, A2, B2, C2, D2, i, f2); \
+}
 
 #define RIPEMD_round3(i, f1, f2) { \
 	RIPEMD_step1(D1, E1, A1, B1, C1, i, f1); \
-	RIPEMD_step2(D2, E2, A2, B2, C2, i, f2); }
+	RIPEMD_step2(D2, E2, A2, B2, C2, i, f2); \
+}
 
 #define RIPEMD_round4(i, f1, f2) { \
 	RIPEMD_step1(C1, D1, E1, A1, B1, i, f1); \
-	RIPEMD_step2(C2, D2, E2, A2, B2, i, f2); }
+	RIPEMD_step2(C2, D2, E2, A2, B2, i, f2); \
+}
 
 #define RIPEMD_round5(i, f1, f2) { \
 	RIPEMD_step1(B1, C1, D1, E1, A1, i, f1); \
-	RIPEMD_step2(B2, C2, D2, E2, A2, i, f2); }
+	RIPEMD_step2(B2, C2, D2, E2, A2, i, f2); \
+}
 
 #define RIPEMD_rounds(a, b, c, d, e, f1, f2) { \
 	RIPEMD_round##a(i, f1, f2); \
 	RIPEMD_round##b(i+1, f1, f2); \
 	RIPEMD_round##c(i+2, f1, f2); \
 	RIPEMD_round##d(i+3, f1, f2); \
-	RIPEMD_round##e(i+4, f1, f2); }
+	RIPEMD_round##e(i+4, f1, f2); \
+}
 
 /////////////////////////////////////////////////
 
@@ -223,7 +233,7 @@ static u32 bech32_add(u32 h, u8 x) {
 	h = (h % (1<<25)) << 5 ^ x;
 
 	for (u32 i = 0; i < 5; i++)
-		if (b>>i & 1) { h ^= BECH32_GEN[i]; }
+		if (b>>i & 1) h ^= BECH32_GEN[i];
 
 	return h;
 }

@@ -2,10 +2,11 @@
 #define VANITY_H
 
 #include "core/core.h"
+#include <string.h>
 #include <CL/cl.h>
 #include <stdio.h>
 
-#if !defined(WIN32)
+#if defined(WIN32)
 	#define INCBIN_SEC ".rdata, \"dr\""
 #else
 	#define INCBIN_SEC ".rodata"
@@ -68,10 +69,10 @@ void bn_print_base58(bn X, u32 z);
 /////////////////////////////////////////////////
 
 cl2_ctx* cl2_open();
-void cl2_close(cl2_ctx* V);
+void cl2_close(cl2_ctx* Cl);
 
 void cl2_alloc(
-	cl2_buf* R, cl2_ctx* V,
+	cl2_buf* R, cl2_ctx* Cl,
 	cl_mem_flags f, u32 n);
 
 cl_event cl2_read(
@@ -82,8 +83,8 @@ cl_event cl2_write(
 	cl2_buf* R, cl2_dev* D,
 	const void* X, cl_event ev);
 
-void cl2_setup(
-	cl2_ctx* V, u32 s,
+void cl2_config(
+	cl2_ctx* Cl, u32 s,
 	const void* F, u32 f,
 	const void* L, u32 l);
 
@@ -93,7 +94,7 @@ cl_event cl2_dispatch2(
 	u32 lo_x, u32 lo_y,
 	cl_event ev);
 
-void cl2_build(cl2_ctx* V, str ke);
+void cl2_build(cl2_ctx* Cl, str ke);
 
 /////////////////////////////////////////////////
 

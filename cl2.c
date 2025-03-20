@@ -68,32 +68,32 @@ cl2_ctx* cl2_open() {
 	CL_ASSERT(clGetDeviceIDs(
 		P, CL_DEVICE_TYPE_GPU, 0, NULL, &n));
 
-	cl2_ctx* V = malloc(
+	cl2_ctx* Cl = malloc(
 		sizeof(cl2_ctx) + sizeof(cl2_dev) * n);
 
 	cl_device_id D[n];
 	CL_ASSERT(clGetDeviceIDs(
 		P, CL_DEVICE_TYPE_GPU, n, D, NULL));
 
-	V->cl = clCreateContext(NULL, n, D, NULL, NULL, &e);
-	V->n = n, CL_ASSERT(e);
+	Cl->cl = clCreateContext(NULL, n, D, NULL, NULL, &e);
+	Cl->n = n, CL_ASSERT(e);
 
 	for (u32 i = 0; i < n; i++) {
-		V->D[i].id = D[i];
-		V->D[i].q = clCreateCommandQueue(V->cl, D[i], &e);
+		Cl->D[i].id = D[i];
+		Cl->D[i].q = clCreateCommandQueue(Cl->cl, D[i], &e);
 		CL_ASSERT(e);
 
 		CL_ASSERT(clGetDeviceInfo(
 			D[i], CL_DEVICE_MAX_COMPUTE_UNITS,
-			sizeof(u32), &V->D[i].cu, NULL));
+			sizeof(u32), &Cl->D[i].cu, NULL));
 	}
 
-	return V;
+	return Cl;
 }
 
-void cl2_close(cl2_ctx* V) {
-	for (u32 i = 0; i < V->n; i++) {
-		cl2_dev* D = &V->D[i];
+void cl2_close(cl2_ctx* Cl) {
+	for (u32 i = 0; i < Cl->n; i++) {
+		cl2_dev* D = &Cl->D[i];
 
 		CL_ASSERT(clReleaseDevice(D->id));
 		CL_ASSERT(clReleaseCommandQueue(D->q));
@@ -105,20 +105,20 @@ void cl2_close(cl2_ctx* V) {
 		CL_ASSERT(clReleaseMemObject(D->L.d));
 	}
 
-	CL_ASSERT(clReleaseContext(V->cl));
-	CL_ASSERT(clReleaseProgram(V->pr));
+	CL_ASSERT(clReleaseContext(Cl->cl));
+	CL_ASSERT(clReleaseProgram(Cl->pr));
 
-	free(V);
+	free(Cl);
 }
 
 /////////////////////////////////////////////////
 
 void cl2_alloc(
-	cl2_buf* R, cl2_ctx* V,
+	cl2_buf* R, cl2_ctx* Cl,
 	cl_mem_flags f, u32 n
 ) {
 	cl_int e; R->n = n;
-	R->d = clCreateBuffer(V->cl, f, n, NULL, &e);
+	R->d = clCreateBuffer(Cl->cl, f, n, NULL, &e);
 	CL_ASSERT(e);
 }
 
@@ -150,25 +150,25 @@ cl_event cl2_write(
 	return ev1;
 }
 
-void cl2_setup(
-	cl2_ctx* V, u32 s,
+void cl2_config(
+	cl2_ctx* Cl, u32 s,
 	const void* F, u32 f,
 	const void* L, u32 l
 ) {
-	cl_event ev[2*V->n];
-	for (u32 i = 0; i < V->n; i++) {
-		cl2_dev* D = &V->D[i];
+	cl_event ev[2*Cl->n];
+	for (u32 i = 0; i < Cl->n; i++) {
+		cl2_dev* D = &Cl->D[i];
 
-		cl2_alloc(&D->R, V, CL2_OUT, sizeof(vanity_res));
-		cl2_alloc(&D->S, V, CL2_IN, s);
-		cl2_alloc(&D->F, V, CL2_IN, f);
-		cl2_alloc(&D->L, V, CL2_IN, l);
+		cl2_alloc(&D->R, Cl, CL2_OUT, sizeof(vanity_res));
+		cl2_alloc(&D->S, Cl, CL2_IN, s);
+		cl2_alloc(&D->F, Cl, CL2_IN, f);
+		cl2_alloc(&D->L, Cl, CL2_IN, l);
 
 		ev[2*i] = cl2_write(&D->F, D, F, NULL);
 		ev[2*i+1] = cl2_write(&D->L, D, L, NULL);
 	}
 
-	clWaitForEvents(2*V->n, ev);
+	clWaitForEvents(2*Cl->n, ev);
 }
 
 cl_event cl2_dispatch2(
@@ -207,12 +207,12 @@ static void cl2_build_log(cl_program P, cl_device_id D) {
 	free(a), free(b);
 }
 
-static void cl2_kernel(cl2_ctx* V, str ke) {
+static void cl2_kernel(cl2_ctx* Cl, str ke) {
 	cl_kernel K; cl_int e; u64 n;
-	K = clCreateKernel(V->pr, ke, &e), CL_ASSERT(e);
+	K = clCreateKernel(Cl->pr, ke, &e), CL_ASSERT(e);
 
-	for (u32 i = 0; i < V->n; i++) {
-		cl2_dev* D = &V->D[i];
+	for (u32 i = 0; i < Cl->n; i++) {
+		cl2_dev* D = &Cl->D[i];
 		D->k = clCloneKernel(K, &e), CL_ASSERT(e);
 
 		CL2_set_arg(D->k, 0, &D->R.d);
@@ -230,24 +230,24 @@ static void cl2_kernel(cl2_ctx* V, str ke) {
 	clReleaseKernel(K);
 }
 
-void cl2_build(cl2_ctx* V, str ke) {
+void cl2_build(cl2_ctx* Cl, str ke) {
 	str src = (char*)KERNEL_start;
 	u64 n = (u64)KERNEL_end - (u64)KERNEL_start;
 
 	cl_int e;
-	V->pr = clCreateProgramWithSource(
-		V->cl, 1, &src, &n, &e);
+	Cl->pr = clCreateProgramWithSource(
+		Cl->cl, 1, &src, &n, &e);
 
 	CL_ASSERT(e);
-	for (u32 i = 0; i < V->n; i++) {
-		cl_device_id D = V->D[i].id;
-		e = clBuildProgram(V->pr, 1, &D, NULL, NULL, NULL);
+	for (u32 i = 0; i < Cl->n; i++) {
+		cl_device_id D = Cl->D[i].id;
+		e = clBuildProgram(Cl->pr, 1, &D, NULL, NULL, NULL);
 
 		if (e == CL_BUILD_PROGRAM_FAILURE)
-			cl2_build_log(V->pr, D);
+			cl2_build_log(Cl->pr, D);
 
 		CL_ASSERT(e);
 	}
 
-	cl2_kernel(V, ke);
+	cl2_kernel(Cl, ke);
 }

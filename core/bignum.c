@@ -152,7 +152,7 @@ void bn_modadd(bn_mut* R, bn X, bn Y, bn M) {
 }
 
 void bn_modsub(bn_mut* R, bn X, bn Y, bn M) {
-	if (bn_sub(R, X, Y)) { bn_add(R, R, M); }
+	if (bn_sub(R, X, Y)) bn_add(R, R, M);
 }
 
 /////////////////////////////////////////////////

@@ -8,7 +8,7 @@ static const str BASE58 =
 	"123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 	"abcdefghijkmnopqrstuvwxyz";
 
-static u32 vanity_read(str fp, void* R, u32 n) {
+static u32 vanity_read(void* R, str fp, u32 n) {
 	FILE* F = fopen(fp, "rb");
 	if (!F) return 0;
 
@@ -45,12 +45,12 @@ void bn_rand(bn_mut* R) {
 
 /////////////////////////////////////////////////
 
-static u32 str_find(char x, str S) {
-	for (u32 i = 0; S[i] != 0; i++)
-		if (S[i] == x) return i;
+static u32 str_find(char x, str X) {
+	for (u32 i = 0; X[i] != 0; i++)
+		if (X[i] == x) return i;
 
-	VANITY_LOG("str_find: invalid char\n");
-	exit(1);
+	VANITY_LOG("str_find: invalid char: %c\n", x);
+	exit(-1);
 }
 
 void u8_print(const u8* X, u32 n) {
@@ -80,8 +80,10 @@ void bn_print_base58(bn X, u32 z) {
 	u8 R[64]; u32 n = 0;
 	bn_mut X_ = *X, Y = { 58 }, T;
 
-	for (u32 i = 31-z; U8(X)[i] == 0; i--)
-		printf("1");
+	for (
+		u32 i = sizeof(bn_mut) - (z+1);
+		U8(X)[i] == 0; i--
+	) printf("1");
 
 	while (bn_cmp(&X_, &BN_0) != EQ) {
 		bn_divmod(&T, &X_, &X_, &Y);
@@ -97,7 +99,7 @@ void bn_print_base58(bn X, u32 z) {
 /////////////////////////////////////////////////
 
 secp_lut* vanity_secp_lut(secp_lut_mul* Lm) {
-	str LUT_FILE = "secp256k1.lut";
+	const str FP = "secp256k1.lut";
 
 	Lm->d[0] = SECP_G;
 	for (u32 i = 1; i < 256; i++) {
@@ -106,33 +108,33 @@ secp_lut* vanity_secp_lut(secp_lut_mul* Lm) {
 	}
 
 	secp_lut* L = malloc(sizeof(secp_lut));
-	if (!vanity_read(LUT_FILE, L, sizeof(secp_lut))) {
+	if (!vanity_read(L, FP, sizeof(secp_lut))) {
 		L->d[0] = SECP_G;
 		for (u32 i = 0; i < 24; i++) {
 			VANITY_LOG(
 				"\r* build %s: %u/%u",
-				LUT_FILE, 1<<i, 1<<24);
+				FP, 1<<i, 1<<24);
 
 			xy* P = L->d + (1<<i);
 			secp_addN(P, P-1, L->d, 1<<i);
 		}
 
-		ASSERT(vanity_write(LUT_FILE, L, sizeof(secp_lut)));
-		VANITY_LOG("\r* build %s: OK\33[K\n", LUT_FILE);
+		ASSERT(vanity_write(FP, L, sizeof(secp_lut)));
+		VANITY_LOG("\r* build %s: OK\33[K\n", FP);
 	}
 
 	return L;
 }
 
 ed_lut* vanity_ed_lut() {
-	str LUT_FILE = "Ed25519.lut";
+	const str FP = "Ed25519.lut";
 
 	ed_lut* L = malloc(sizeof(ed_lut));
-	if (!vanity_read(LUT_FILE, L, sizeof(ed_lut))) {
+	if (!vanity_read(L, FP, sizeof(ed_lut))) {
 		xytz G = ED_G;
 		for (u32 i = 0; i < 12; i++) {
 			VANITY_LOG(
-				"\r* build %s: %u/256", LUT_FILE,
+				"\r* build %s: %u/256", FP,
 				i < 8 ? 21*i : (22*i - 8));
 
 			ed_lut_step(
@@ -140,8 +142,8 @@ ed_lut* vanity_ed_lut() {
 				i < 8 ? 1<<21 : 1<<22);
 		}
 
-		ASSERT(vanity_write(LUT_FILE, L, sizeof(ed_lut)));
-		VANITY_LOG("\r* build %s: OK\33[K\n", LUT_FILE);
+		ASSERT(vanity_write(FP, L, sizeof(ed_lut)));
+		VANITY_LOG("\r* build %s: OK\33[K\n", FP);
 	}
 
 	return L;
@@ -206,7 +208,7 @@ static void bn_filt58_prefix(bn_filt58* F, str s, u32 z) {
 
 	while (
 		bn_muladd(&T, &F->l, 57, &F->l) == 0 &&
-		(n+z == 0 || U8(&T)[32-n-z] == 0)
+		(n+z == 0 || U8(&T)[sizeof(bn_mut) - (n+z)] == 0)
 	) {
 		bn_muladd(&F->h, &F->h, 57, &F->h);
 		bn_add64(&F->h, &F->h, 57), F->l = T;
@@ -226,9 +228,12 @@ u64 bn_filt58_init(bn_filt58* F, str pr, u32 z, str su) {
 		bn_add64(&F->r, &F->r, str_find(su[i], BASE58));
 	}
 
-	bn_mut D, N; bn_neg(&N, &BN_0);
-	mem_copy(U8(&N) + 32-z, &BN_0, z);
-	bn_divmod(&D, &N, &N, &F->h);
+	bn_mut D = {};
+	if (strlen(pr) > 0) {
+		bn_mut N; bn_neg(&N, &BN_0);
+		mem_copy(U8(&N+1) - z, &BN_0, z);
+		bn_divmod(&D, &N, &N, &F->h);
+	} else D.d[0] = 1;
 
 	bn_add(&F->h, &F->l, &F->h);
 	return bn_get64(&D, 0) * bn_get64(&F->m, 0);
