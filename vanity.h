@@ -12,6 +12,8 @@
 	#define INCBIN_SEC ".rodata"
 #endif
 
+#define unreachable() __builtin_unreachable()
+
 #define INCBIN(var, fp) \
 	asm ( \
 		".section " INCBIN_SEC ";" \
@@ -62,6 +64,7 @@ void bn_rand(bn_mut* R);
 
 void u8_print(const u8* X, u32 n);
 void u8_print_bech32(const u8* X, u32 n);
+void u8_print_base58(const u8* X, u32 n);
 
 void bn_print(bn X);
 void bn_print_base58(bn X, u32 z);

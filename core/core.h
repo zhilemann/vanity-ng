@@ -53,6 +53,7 @@ static const bn_mut BN_0 = {};
 #define ROL(x, n) ((x)<<(n) | (x)>>(__WIDTH(x)-(n)))
 #define ROR(x, n) ((x)>>(n) | (x)<<(__WIDTH(x)-(n)))
 
+void mem_zero(void* R, u32 n);
 void mem_copy(void* R, const void* X, u32 n);
 void u8_base32(u8* R, const u8* X, u32 n);
 

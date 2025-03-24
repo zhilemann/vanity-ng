@@ -68,6 +68,26 @@ void u8_print_bech32(const u8* X, u32 n) {
 	printf("\n");
 }
 
+void u8_print_base58(const u8* X, u32 n) {
+	// pasted from Bitcoin Core :P
+	u32 m = 138*n / 100 + 1;
+	u32 t = 0; u8 T[m]; mem_zero(T, m);
+
+	for (u32 i = 0; i < n; i++) {
+		t = X[i];
+		for (u32 j = m-1; j+1 > 0; j--) {
+			t += 256 * T[j];
+			T[j] = t % 58, t /= 58;
+		}
+	}
+
+	n = 0; while (T[n] == 0) n++;
+	for (u32 i = n; i < m; i++)
+		printf("%c", BASE58[T[i]]);
+
+	printf("\n");
+}
+
 void bn_print(bn X) {
 	printf("0x");
 	for (u32 i = 7; i+1 > 0; i--)
@@ -231,7 +251,7 @@ u64 bn_filt58_init(bn_filt58* F, str pr, u32 z, str su) {
 	bn_mut D = {};
 	if (strlen(pr) > 0) {
 		bn_mut N; bn_neg(&N, &BN_0);
-		mem_copy(U8(&N+1) - z, &BN_0, z);
+		mem_zero(U8(&N+1) - z, z);
 		bn_divmod(&D, &N, &N, &F->h);
 	} else D.d[0] = 1;
 

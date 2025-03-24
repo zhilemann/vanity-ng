@@ -28,7 +28,7 @@ static vanity_mode vanity_get_mode(str x) {
 
 static void vanity_help() {
 	VANITY_LOG(
-		"usage: vanitygen2 -m ... "
+		"usage: vanity-ng -m ... "
 		"[-p ...] [-s ...]\n");
 
 	VANITY_LOG(
@@ -178,6 +178,59 @@ static void vanity_run(
 
 /////////////////////////////////////////////////
 
+static void vanity_addr_print(
+	const vanity_res* R, vanity_mode mo
+) {
+	printf("addr=");
+	switch (mo) {
+		case VANITY_ETH: u8_print(R->k.u8, 20); break;
+		case VANITY_BTC_BASE58:
+			bn_print_base58(&R->k.bn, 7); break;
+
+		case VANITY_BTC_BECH32:
+			printf("bc1q");
+			u8_print_bech32(R->k.u8, 38); break;
+
+		case VANITY_SOL:
+			bn_print_base58(&R->k.bn, 0); break;
+
+		default: unreachable();
+	}
+}
+
+static void vanity_key_print(
+	const vanity_res* R, vanity_mode mo
+) {
+	switch (mo) {
+		case VANITY_ETH:
+			printf(" key=");
+			bn_print(&R->s); break;
+
+		case VANITY_BTC_BASE58:
+		case VANITY_BTC_BECH32: {
+			u8 T[38], U[32];
+			T[0] = 0x80, bn_bswap(BN(T+1), &R->s);
+			T[sizeof(bn_mut)+1] = 0x01;
+
+			sha2_256(U, T, 34), sha2_256(U, U, 32);
+			mem_copy(T+sizeof(bn_mut)+2, U, 4);
+			printf(" WIF="), u8_print_base58(T, 38);
+		}; break;
+
+		case VANITY_SOL: {
+			u8 T[64]; bn_bswap(BN(T), &R->s);
+			bn_bswap(BN(T+32), &R->k.bn);
+
+			printf(" key="), bn_print(&R->s);
+			printf("pair="), u8_print_base58(T, 64);
+		}; break;
+
+		default: unreachable();
+	}
+}
+
+/////////////////////////////////////////////////
+
 int main(int argc, char** argv) {
 	char op, *pr = "", *su = "";
 	vanity_mode mo = VANITY_HELP;
@@ -203,35 +256,17 @@ int main(int argc, char** argv) {
 	u64 di = vanity_config(Cl, mo, pr, su, &Lm);
 
 	VANITY_LOG(
-		"vanitygen2 in %s mode, diff=%"PRIu64"\n",
+		"vanity-ng b1 in %s mode, diff=%"PRIu64"\n",
 		VANITY_MODE[mo], di);
 
 	char ke[32] = "vanity_";
-	strcat(ke, VANITY_MODE[mo]);
-	cl2_build(Cl, ke);
+	strcat(ke, VANITY_MODE[mo]), cl2_build(Cl, ke);
 
 	vanity_res R;
 	vanity_run(&R, Cl, di, ed25519 ? NULL : &Lm);
 
-	printf(" key="); bn_print(&R.s);
-
-	printf("addr=");
-	switch (mo) {
-		case VANITY_ETH:
-			u8_print(R.k.u8, 20); break;
-
-		case VANITY_BTC_BASE58:
-			bn_print_base58(&R.k.bn, 7); break;
-
-		case VANITY_BTC_BECH32:
-			printf("bc1q");
-			u8_print_bech32(R.k.u8, 38); break;
-
-		case VANITY_SOL:
-			bn_print_base58(&R.k.bn, 0); break;
-
-		default: return -1;
-	}
+	vanity_addr_print(&R, mo);
+	vanity_key_print(&R, mo);
 
 	return 0;
 }

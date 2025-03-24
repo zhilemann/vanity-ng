@@ -1,7 +1,7 @@
-all: build/vanitygen2
+all: build/vanity-ng
 
-build/vanitygen2: core/*.h core/*.c build/kernel.cl *.c | build
-	$(CC) $(filter %.c, $^) -Wall -Wno-missing-braces -lOpenCL -lm -O2 -march=native -o $@
+build/vanity-ng: core/*.c *.c | core/*.h build/kernel.cl
+	$(CC) $^ -Wall -Wno-missing-braces -lOpenCL -lm -O2 -march=native -o $@
 
 build/kernel.cl: core/*.h core/*.c kernel.cl | build
 	cat $^ | sed /#include/d | tr '\t' ' ' > $@

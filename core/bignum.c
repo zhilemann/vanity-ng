@@ -1,5 +1,10 @@
 #include "core.h"
 
+void mem_zero(void* R, u32 n) {
+	for (u32 i = 0; i < n; i++)
+		U8(R)[i] = 0;
+}
+
 void mem_copy(void* R, const void* X, u32 n) {
 	for (u32 i = 0; i < n; i++)
 		U8(R)[i] = U8(X)[i];
